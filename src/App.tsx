@@ -3,7 +3,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import './App.css';
 import { filterActivity, loadDashboard, type DashboardData } from './application/dashboard';
 import type { ActivityItem } from './domain/models';
-import { fixtureRepository } from './infrastructure/fixture/fixtureRepository';
+import { appRepository } from './infrastructure/repository';
 import { relativeDate } from './shared/dates';
 
 const iconFor = (type: ActivityItem['type']) => ({
@@ -38,9 +38,13 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState('Noch nicht synchronisiert');
 
-  useEffect(() => {
-    loadDashboard(fixtureRepository).then(setDashboard);
-  }, []);
+useEffect(() => {
+  loadDashboard(appRepository)
+    .then(setDashboard)
+    .catch((error) => {
+      console.error('Dashboard konnte nicht geladen werden:', error);
+    });
+}, []);
 
   const visibleItems = useMemo(
     () => filterActivity(dashboard?.activity ?? [], selectedCourse, query),
