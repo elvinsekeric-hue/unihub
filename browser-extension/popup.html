@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UniHub</title>
+
+    <style>
+      body {
+        width: 310px;
+        margin: 0;
+        padding: 18px;
+        color: #15283a;
+        background: #f3f7fa;
+        font-family: system-ui, sans-serif;
+      }
+
+      h1 {
+        margin: 0 0 4px;
+        font-size: 20px;
+      }
+
+      p {
+        color: #647789;
+        font-size: 13px;
+      }
+
+      button {
+        width: 100%;
+        padding: 11px;
+        border: 0;
+        border-radius: 8px;
+        color: white;
+        background: #315f89;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      #result {
+        margin-top: 14px;
+        padding: 12px;
+        border-radius: 8px;
+        background: white;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .error {
+        color: #b42318;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>UniHub</h1>
+    <p>Übernimmt die aktuell geöffnete ILIAS-Seite.</p>
+
+    <button id="scan">Seite scannen</button>
+
+    <div id="result">Noch nicht gescannt.</div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
