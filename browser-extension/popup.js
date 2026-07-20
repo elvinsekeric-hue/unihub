@@ -30,10 +30,20 @@ scanButton.addEventListener('click', async () => {
       return;
     }
 
-    await chrome.runtime.sendMessage({
-      type: 'UNIHUB_STORE_SCAN',
-      payload: response.payload
-    });
+    const bridgeResponse = await fetch(
+  "http://127.0.0.1:43127/api/ilias-scan",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(response.payload)
+  }
+);
+
+if (!bridgeResponse.ok) {
+  throw new Error("UniHub Bridge nicht erreichbar.");
+}
 
     const { counts, pageTitle } = response.payload;
 

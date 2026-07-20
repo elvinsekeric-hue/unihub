@@ -9,7 +9,8 @@
     "storage"
   ],
   "host_permissions": [
-    "https://ilias3.uni-stuttgart.de/*"
+    "https://ilias3.uni-stuttgart.de/*",
+    "http://127.0.0.1:43127/*"
   ],
   "background": {
     "service_worker": "background.js"

@@ -1,3 +1,5 @@
+import { listen } from '@tauri-apps/api/event';
+import { importLatestIliasScan } from './application/syncLiveIliasScan';
 import { useEffect, useMemo, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import './App.css';
@@ -38,12 +40,75 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState('Noch nicht synchronisiert');
 
+async function refreshDashboard(): Promise<void> {
+  const data = await loadDashboard(appRepository);
+  setDashboard(data);
+}
+
 useEffect(() => {
-  loadDashboard(appRepository)
-    .then(setDashboard)
-    .catch((error) => {
-      console.error('Dashboard konnte nicht geladen werden:', error);
-    });
+  refreshDashboard().catch((error) => {
+    console.error(
+      'Dashboard konnte nicht geladen werden:',
+      error,
+    );
+  });
+}, []);
+
+useEffect(() => {
+  let disposed = false;
+  let removeListener: (() => void) | undefined;
+
+  async function registerListener(): Promise<void> {
+    removeListener = await listen(
+      'unihub://ilias-scan-ready',
+      async () => {
+        try {
+          setSyncing(true);
+
+          const result = await importLatestIliasScan();
+
+          if (!result || disposed) {
+            return;
+          }
+
+          await refreshDashboard();
+
+          setLastSync(
+            `Heute, ${new Date().toLocaleTimeString('de-DE', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}`,
+          );
+
+          console.log(
+            `ILIAS synchronisiert: ${result.discovered} Dateien, ` +
+              `${result.newFiles} neu.`,
+          );
+        } catch (error) {
+          console.error(
+            'ILIAS-Scan konnte nicht verarbeitet werden:',
+            error,
+          );
+        } finally {
+          if (!disposed) {
+            setSyncing(false);
+          }
+        }
+      },
+    );
+  }
+
+  registerListener().catch((error) => {
+    console.error(
+      'ILIAS-Listener konnte nicht gestartet werden:',
+      error,
+    );
+  });
+
+  return () => {
+    disposed = true;
+    removeListener?.();
+  };
 }, []);
 
   const visibleItems = useMemo(
