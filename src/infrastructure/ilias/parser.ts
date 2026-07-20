@@ -1,4 +1,12 @@
-import type { Assignment, Folder, LearningFile } from '../../domain/models';
+import type {
+  Assignment,
+  Folder,
+  LearningFile,
+} from '../../domain/models';
+import { parseAssignments } from './selectors/assignment';
+import { parseFiles } from './selectors/file';
+import { parseFolders } from './selectors/folder';
+import { parseHtml } from './selectors/shared';
 
 export interface ParsedIliasPage {
   folders: Folder[];
@@ -6,11 +14,24 @@ export interface ParsedIliasPage {
   assignments: Assignment[];
 }
 
-/**
- * Contract for the real ILIAS parser.
- * The browser extension proved the selectors and URL patterns in Phase 0.
- * Parsing is implemented next, independently from React and SQLite.
- */
-export function parseIliasPage(_html: string, _courseId: string, _pageUrl: string): ParsedIliasPage {
-  return { folders: [], files: [], assignments: [] };
+export function parseIliasPage(
+  html: string,
+  courseId: string,
+  pageUrl: string,
+): ParsedIliasPage {
+  if (!html.trim()) {
+    return {
+      folders: [],
+      files: [],
+      assignments: [],
+    };
+  }
+
+  const document = parseHtml(html);
+
+  return {
+    folders: parseFolders(document, courseId, pageUrl),
+    files: parseFiles(document, courseId, pageUrl),
+    assignments: parseAssignments(document, courseId, pageUrl),
+  };
 }

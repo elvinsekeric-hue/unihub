@@ -19,6 +19,17 @@ export async function loadDashboard(repository: UniHubRepository): Promise<Dashb
   return { semester, courses, activity, assignments };
 }
 
+function getActivityDescription(item: ActivityItem): string {
+  switch (item.type) {
+    case 'file':
+    case 'assignment':
+      return item.description ?? '';
+
+    case 'announcement':
+      return item.body ?? '';
+  }
+}
+
 export function filterActivity(
   activity: ActivityItem[],
   courseId: string,
@@ -28,7 +39,8 @@ export function filterActivity(
 
   return activity.filter((item) => {
     const matchesCourse = courseId === 'all' || item.courseId === courseId;
-    const searchable = `${item.title} ${item.description ?? ''}`.toLocaleLowerCase('de-DE');
+    const searchable =
+`${item.title} ${getActivityDescription(item)}`.toLocaleLowerCase("de-DE");
     const matchesQuery = normalizedQuery.length === 0 || searchable.includes(normalizedQuery);
     return matchesCourse && matchesQuery;
   });

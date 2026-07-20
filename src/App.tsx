@@ -20,6 +20,17 @@ async function safeOpen(url: string) {
   }
 }
 
+function getActivityDescription(item: ActivityItem): string | undefined {
+  switch (item.type) {
+    case 'file':
+    case 'assignment':
+      return item.description;
+
+    case 'announcement':
+      return item.body;
+  }
+}
+
 export default function App() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<string>('all');
@@ -110,7 +121,9 @@ export default function App() {
                     <span className="item-body">
                       <span className="item-meta"><b style={{ color: course.color }}>{course.shortName}</b>{item.isNew && <em>NEU</em>}</span>
                       <strong>{item.title}</strong>
-                      {item.description && <small>{item.description}</small>}
+                     {getActivityDescription(item) && (
+  <small>{getActivityDescription(item)}</small>
+)}
                       {item.type === 'assignment' && item.dueAt && (
                         <small className="urgent">Abgabe {relativeDate(item.dueAt)}</small>
                       )}
