@@ -27,23 +27,35 @@ const courses: Course[] = [
     iliasUrl: 'https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilrepositorygui&cmdNode=xi:md&cmdClass=ilobjcoursegui&ref_id=4364722&item_ref_id=0',
   },
   {
-    id: 'course:dsa',
-    iliasRefId: 'unknown-dsa',
-    title: 'Datenstrukturen und Algorithmen',
-    shortName: 'DSA',
-    semesterId: semester.id,
-    color: '#6a4c93',
-    iliasUrl: 'https://ilias3.uni-stuttgart.de/',
-  },
+  id: 'course:dsa',
+  iliasRefId: '4392414',
+  title: 'Datenstrukturen und Algorithmen',
+  shortName: 'DSA',
+  semesterId: semester.id,
+  color: '#6a4c93',
+  iliasUrl:
+    'https://ilias3.uni-stuttgart.de/' +
+    'ilias.php?baseClass=ilrepositorygui' +
+    '&cmdNode=xi:md' +
+    '&cmdClass=ilobjcoursegui' +
+    '&ref_id=4392414' +
+    '&item_ref_id=0',
+},
   {
-    id: 'course:tgi',
-    iliasRefId: 'unknown-tgi',
-    title: 'Technische Grundlagen der Informatik',
-    shortName: 'TGI',
-    semesterId: semester.id,
-    color: '#2f7d59',
-    iliasUrl: 'https://ilias3.uni-stuttgart.de/',
-  },
+  id: 'course:mathe',
+  iliasRefId: '4405757',
+  title: 'Mathematik',
+  shortName: 'MATHE',
+  semesterId: semester.id,
+  color: '#2f7d59',
+  iliasUrl:
+    'https://ilias3.uni-stuttgart.de/' +
+    'ilias.php?baseClass=ilrepositorygui' +
+    '&cmdNode=xi:md' +
+    '&cmdClass=ilobjcoursegui' +
+    '&ref_id=4405757' +
+    '&item_ref_id=0',
+},
 ];
 
 const folders: Folder[] = [

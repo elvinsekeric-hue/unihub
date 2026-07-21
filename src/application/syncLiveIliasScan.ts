@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { compareIliasFiles } from './compareIliasFiles';
+import { resolveScanSource } from './courseRegistry';
 import { parseIliasPage } from '../infrastructure/ilias/parser';
 import {
   loadFiles,
@@ -17,26 +18,13 @@ interface IliasScan {
 }
 
 export interface LiveSyncResult {
+  courseId: string;
+  scanSourceId: string;
   discovered: number;
   newFiles: number;
   changedFiles: number;
   unchangedFiles: number;
   removedFiles: number;
-}
-
-function resolveCourseId(scan: IliasScan): string {
-  if (
-    scan.pageUrl.includes('4364743') ||
-    scan.pageTitle
-      .toLocaleLowerCase('de-DE')
-      .includes('tutoriumsblätter')
-  ) {
-    return 'course:lds';
-  }
-
-  throw new Error(
-    `Die Seite "${scan.pageTitle}" konnte noch keinem Kurs zugeordnet werden.`,
-  );
 }
 
 export async function importLatestIliasScan():
@@ -51,7 +39,16 @@ Promise<LiveSyncResult | null> {
     return null;
   }
 
-  const courseId = resolveCourseId(scan);
+  if (scan.source !== 'unihub-ilias-extension') {
+    throw new Error(
+      'Der empfangene Scan stammt nicht von UniHub.',
+    );
+  }
+
+  const {
+    courseId,
+    scanSourceId,
+  } = resolveScanSource(scan);
 
   try {
     const parsed = parseIliasPage(
@@ -60,13 +57,20 @@ Promise<LiveSyncResult | null> {
       scan.pageUrl,
     );
 
+    const scannedFiles = parsed.files.map((file) => ({
+      ...file,
+      courseId,
+      scanSourceId,
+    }));
+
     const existingFiles = await loadFiles(
       courseId,
       true,
+      scanSourceId,
     );
 
     const comparison = compareIliasFiles(
-      parsed.files,
+      scannedFiles,
       existingFiles,
     );
 
@@ -74,10 +78,11 @@ Promise<LiveSyncResult | null> {
 
     await saveSyncSnapshot({
       courseId,
+      scanSourceId,
       startedAt,
       completedAt: new Date().toISOString(),
       status: 'success',
-      discovered: parsed.files.length,
+      discovered: scannedFiles.length,
       changed:
         comparison.newFiles.length +
         comparison.changedFiles.length,
@@ -85,7 +90,9 @@ Promise<LiveSyncResult | null> {
     });
 
     return {
-      discovered: parsed.files.length,
+      courseId,
+      scanSourceId,
+      discovered: scannedFiles.length,
       newFiles: comparison.newFiles.length,
       changedFiles: comparison.changedFiles.length,
       unchangedFiles: comparison.unchangedFiles.length,
@@ -94,6 +101,7 @@ Promise<LiveSyncResult | null> {
   } catch (error) {
     await saveSyncSnapshot({
       courseId,
+      scanSourceId,
       startedAt,
       completedAt: new Date().toISOString(),
       status: 'failed',

@@ -2,13 +2,15 @@ import Database from '@tauri-apps/plugin-sql';
 
 let databasePromise: Promise<Database> | undefined;
 
-async function addRemovedColumn(
+async function addColumn(
   database: Database,
+  table: string,
+  definition: string,
 ): Promise<void> {
   try {
     await database.execute(`
-      ALTER TABLE learning_files
-      ADD COLUMN is_removed INTEGER NOT NULL DEFAULT 0
+      ALTER TABLE ${table}
+      ADD COLUMN ${definition}
     `);
   } catch (error) {
     const message = String(error).toLowerCase();
@@ -26,6 +28,7 @@ async function createSchema(
     CREATE TABLE IF NOT EXISTS learning_files (
       id TEXT PRIMARY KEY NOT NULL,
       course_id TEXT NOT NULL,
+      scan_source_id TEXT NOT NULL DEFAULT 'source:legacy',
       folder_id TEXT,
       ilias_ref_id TEXT NOT NULL UNIQUE,
       title TEXT NOT NULL,
@@ -44,12 +47,23 @@ async function createSchema(
     )
   `);
 
-  await addRemovedColumn(database);
+  await addColumn(
+    database,
+    'learning_files',
+    "scan_source_id TEXT NOT NULL DEFAULT 'source:legacy'",
+  );
+
+  await addColumn(
+    database,
+    'learning_files',
+    'is_removed INTEGER NOT NULL DEFAULT 0',
+  );
 
   await database.execute(`
     CREATE TABLE IF NOT EXISTS sync_snapshots (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       course_id TEXT NOT NULL,
+      scan_source_id TEXT NOT NULL DEFAULT 'source:legacy',
       started_at TEXT NOT NULL,
       completed_at TEXT NOT NULL,
       status TEXT NOT NULL,
@@ -60,14 +74,30 @@ async function createSchema(
     )
   `);
 
+  await addColumn(
+    database,
+    'sync_snapshots',
+    "scan_source_id TEXT NOT NULL DEFAULT 'source:legacy'",
+  );
+
   await database.execute(`
     CREATE INDEX IF NOT EXISTS idx_learning_files_course
     ON learning_files(course_id)
   `);
 
   await database.execute(`
+    CREATE INDEX IF NOT EXISTS idx_learning_files_source
+    ON learning_files(course_id, scan_source_id)
+  `);
+
+  await database.execute(`
     CREATE INDEX IF NOT EXISTS idx_learning_files_folder
     ON learning_files(folder_id)
+  `);
+
+  await database.execute(`
+    CREATE INDEX IF NOT EXISTS idx_sync_snapshots_source
+    ON sync_snapshots(course_id, scan_source_id)
   `);
 }
 

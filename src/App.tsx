@@ -97,11 +97,13 @@ useEffect(() => {
           );
 
           console.log(
-  `ILIAS synchronisiert: ${result.discovered} Dateien – ` +
+  `${result.courseId} / ${result.scanSourceId} ` +
+    `synchronisiert: ` +
+    `${result.discovered} Dateien – ` +
     `${result.newFiles} neu, ` +
     `${result.changedFiles} geändert, ` +
-    `${result.unchangedFiles} unverändert.`,
-     `${result.removedFiles} entfernt.`,
+    `${result.unchangedFiles} unverändert, ` +
+    `${result.removedFiles} entfernt.`,
 );
         } catch (error) {
           console.error(

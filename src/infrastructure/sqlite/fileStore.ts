@@ -4,9 +4,12 @@ import type {
 } from '../../domain/models';
 import { getDatabase } from './database';
 
+const LEGACY_SOURCE_ID = 'source:legacy';
+
 interface LearningFileRow {
   id: string;
   course_id: string;
+  scan_source_id: string;
   folder_id: string | null;
   ilias_ref_id: string;
   title: string;
@@ -28,6 +31,7 @@ function mapRow(row: LearningFileRow): LearningFile {
   return {
     id: row.id,
     courseId: row.course_id,
+    scanSourceId: row.scan_source_id,
     folderId: row.folder_id ?? undefined,
     iliasRefId: row.ilias_ref_id,
     title: row.title,
@@ -57,6 +61,7 @@ export async function saveFiles(
         INSERT INTO learning_files (
           id,
           course_id,
+          scan_source_id,
           folder_id,
           ilias_ref_id,
           title,
@@ -76,11 +81,12 @@ export async function saveFiles(
         VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8,
           $9, $10, $11, $12, $13, $14, $15, $16,
-          $17
+          $17, $18
         )
         ON CONFLICT(ilias_ref_id) DO UPDATE SET
           id = excluded.id,
           course_id = excluded.course_id,
+          scan_source_id = excluded.scan_source_id,
           folder_id = excluded.folder_id,
           title = excluded.title,
           url = excluded.url,
@@ -99,6 +105,7 @@ export async function saveFiles(
       [
         file.id,
         file.courseId,
+        file.scanSourceId ?? LEGACY_SOURCE_ID,
         file.folderId ?? null,
         file.iliasRefId,
         file.title,
@@ -128,6 +135,7 @@ export async function saveSyncSnapshot(
     `
       INSERT INTO sync_snapshots (
         course_id,
+        scan_source_id,
         started_at,
         completed_at,
         status,
@@ -136,10 +144,11 @@ export async function saveSyncSnapshot(
         removed,
         error_message
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     `,
     [
       snapshot.courseId,
+      snapshot.scanSourceId ?? LEGACY_SOURCE_ID,
       snapshot.startedAt,
       snapshot.completedAt,
       snapshot.status,
@@ -154,12 +163,9 @@ export async function saveSyncSnapshot(
 export async function loadFiles(
   courseId?: string,
   includeRemoved = false,
+  scanSourceId?: string,
 ): Promise<LearningFile[]> {
   const database = await getDatabase();
-
-  const removedCondition = includeRemoved
-    ? ''
-    : 'is_removed = 0';
 
   const conditions: string[] = [];
   const parameters: unknown[] = [];
@@ -169,8 +175,15 @@ export async function loadFiles(
     parameters.push(courseId);
   }
 
-  if (removedCondition) {
-    conditions.push(removedCondition);
+  if (scanSourceId) {
+    conditions.push(
+      `scan_source_id = $${parameters.length + 1}`,
+    );
+    parameters.push(scanSourceId);
+  }
+
+  if (!includeRemoved) {
+    conditions.push('is_removed = 0');
   }
 
   const whereClause =
@@ -195,7 +208,11 @@ export async function countFiles(): Promise<number> {
   const database = await getDatabase();
 
   const rows = await database.select<Array<{ count: number }>>(
-    'SELECT COUNT(*) AS count FROM learning_files',
+    `
+      SELECT COUNT(*) AS count
+      FROM learning_files
+      WHERE is_removed = 0
+    `,
   );
 
   return Number(rows[0]?.count ?? 0);
@@ -208,6 +225,7 @@ export interface StoredSyncSnapshot extends SyncSnapshot {
 interface SyncSnapshotRow {
   id: number;
   course_id: string;
+  scan_source_id: string;
   started_at: string;
   completed_at: string;
   status: 'success' | 'partial' | 'failed';
@@ -220,35 +238,50 @@ interface SyncSnapshotRow {
 export async function loadSyncSnapshots(
   courseId?: string,
   limit = 10,
+  scanSourceId?: string,
 ): Promise<StoredSyncSnapshot[]> {
   const database = await getDatabase();
 
   const safeLimit = Math.max(1, Math.min(limit, 100));
 
-  const rows = courseId
-    ? await database.select<SyncSnapshotRow[]>(
-        `
-          SELECT *
-          FROM sync_snapshots
-          WHERE course_id = $1
-          ORDER BY completed_at DESC
-          LIMIT $2
-        `,
-        [courseId, safeLimit],
-      )
-    : await database.select<SyncSnapshotRow[]>(
-        `
-          SELECT *
-          FROM sync_snapshots
-          ORDER BY completed_at DESC
-          LIMIT $1
-        `,
-        [safeLimit],
-      );
+  const conditions: string[] = [];
+  const parameters: unknown[] = [];
+
+  if (courseId) {
+    conditions.push(`course_id = $${parameters.length + 1}`);
+    parameters.push(courseId);
+  }
+
+  if (scanSourceId) {
+    conditions.push(
+      `scan_source_id = $${parameters.length + 1}`,
+    );
+    parameters.push(scanSourceId);
+  }
+
+  const whereClause =
+    conditions.length > 0
+      ? `WHERE ${conditions.join(' AND ')}`
+      : '';
+
+  parameters.push(safeLimit);
+  const limitParameter = `$${parameters.length}`;
+
+  const rows = await database.select<SyncSnapshotRow[]>(
+    `
+      SELECT *
+      FROM sync_snapshots
+      ${whereClause}
+      ORDER BY completed_at DESC
+      LIMIT ${limitParameter}
+    `,
+    parameters,
+  );
 
   return rows.map((row) => ({
     id: row.id,
     courseId: row.course_id,
+    scanSourceId: row.scan_source_id,
     startedAt: row.started_at,
     completedAt: row.completed_at,
     status: row.status,

@@ -41,6 +41,7 @@ export interface Folder {
 export interface LearningFile {
   id: EntityId;
   courseId: EntityId;
+  scanSourceId?: EntityId;
   folderId?: EntityId;
   iliasRefId: string;
   title: string;
@@ -90,6 +91,7 @@ export type ActivityItem =
 
 export interface SyncSnapshot {
   courseId: EntityId;
+  scanSourceId?: EntityId;
   startedAt: IsoDateTime;
   completedAt: IsoDateTime;
   status: 'success' | 'partial' | 'failed';
