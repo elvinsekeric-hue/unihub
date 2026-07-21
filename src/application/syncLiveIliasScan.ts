@@ -18,6 +18,7 @@ import {
 } from '../infrastructure/sqlite/fileStore';
 
 interface IliasScan {
+  scanId: number;
   source: string;
   version: number;
   scannedAt: string;
@@ -88,34 +89,53 @@ Promise<LiveSyncResult | null> {
   const startedAt = new Date().toISOString();
 
   const scan = await invoke<IliasScan | null>(
-    'take_latest_ilias_scan',
+    'take_next_ilias_scan',
   );
 
   if (!scan) {
     return null;
   }
 
-  if (scan.source !== 'unihub-ilias-extension') {
-    throw new Error(
-      'Der empfangene Scan stammt nicht von UniHub.',
-    );
-  }
+const currentScan = scan;
 
-  const {
-    courseId,
-    scanSourceId,
-  } = await resolveSyncSource(scan);
+  async function completeScan(
+  success: boolean,
+  errorMessage?: string,
+): Promise<void> {
+  await invoke('complete_ilias_scan', {
+    scanId: currentScan.scanId,
+    success,
+    errorMessage: errorMessage ?? null,
+  });
+}
 
   try {
-    const pageRefId = getPageRefId(scan.pageUrl);
+    if (
+      scan.source !==
+      'unihub-ilias-extension'
+    ) {
+      throw new Error(
+        'Der empfangene Scan stammt nicht von UniHub.',
+      );
+    }
+
+    const {
+      courseId,
+      scanSourceId,
+    } = await resolveSyncSource(scan);
+
+    const pageRefId =
+      getPageRefId(scan.pageUrl);
 
     const currentFolder =
-      pageRefId && isFolderPage(scan.pageUrl)
+      pageRefId &&
+      isFolderPage(scan.pageUrl)
         ? await loadFolderByRefId(pageRefId)
         : undefined;
 
     const currentFolderId =
-      pageRefId && isFolderPage(scan.pageUrl)
+      pageRefId &&
+      isFolderPage(scan.pageUrl)
         ? `folder:${pageRefId}`
         : undefined;
 
@@ -128,29 +148,27 @@ Promise<LiveSyncResult | null> {
       scan.pageUrl,
     );
 
-    const scannedFiles = parsed.files.map((file) => ({
-      ...file,
-      courseId,
-      scanSourceId,
-      folderId: currentFolderId,
-    }));
+    const scannedFiles = parsed.files.map(
+      (file) => ({
+        ...file,
+        courseId,
+        scanSourceId,
+        folderId: currentFolderId,
+      }),
+    );
 
-    const scannedFolders = parsed.folders.map((folder) => ({
-      ...folder,
-      courseId,
-      scanSourceId,
-      parentFolderId: currentFolderId,
-      path: [
-        ...currentFolderPath,
-        folder.title,
-      ],
-    }));
+    const scannedFolders =
+      parsed.folders.map((folder) => ({
+        ...folder,
+        courseId,
+        scanSourceId,
+        parentFolderId: currentFolderId,
+        path: [
+          ...currentFolderPath,
+          folder.title,
+        ],
+      }));
 
-    /*
-     * Es werden nur Dateien der aktuell geöffneten Seite
-     * verglichen. Dadurch beeinflussen sich Unterordner
-     * innerhalb derselben Scan-Quelle nicht gegenseitig.
-     */
     const existingFiles = await loadFiles(
       courseId,
       true,
@@ -180,41 +198,50 @@ Promise<LiveSyncResult | null> {
       courseId,
       scanSourceId,
       startedAt,
-      completedAt: new Date().toISOString(),
+      completedAt:
+        new Date().toISOString(),
       status: 'success',
       discovered: scannedFiles.length,
       changed:
         comparison.newFiles.length +
         comparison.changedFiles.length,
-      removed: comparison.removedFiles.length,
+      removed:
+        comparison.removedFiles.length,
     });
 
-    return {
+    const result: LiveSyncResult = {
       courseId,
       scanSourceId,
       discovered: scannedFiles.length,
-      discoveredFolders: scannedFolders.length,
-      newFiles: comparison.newFiles.length,
-      changedFiles: comparison.changedFiles.length,
-      unchangedFiles: comparison.unchangedFiles.length,
-      removedFiles: comparison.removedFiles.length,
+      discoveredFolders:
+        scannedFolders.length,
+      newFiles:
+        comparison.newFiles.length,
+      changedFiles:
+        comparison.changedFiles.length,
+      unchangedFiles:
+        comparison.unchangedFiles.length,
+      removedFiles:
+        comparison.removedFiles.length,
       removedFolders,
     };
+
+    await completeScan(true);
+
+    return result;
   } catch (error) {
-    await saveSyncSnapshot({
-      courseId,
-      scanSourceId,
-      startedAt,
-      completedAt: new Date().toISOString(),
-      status: 'failed',
-      discovered: 0,
-      changed: 0,
-      removed: 0,
-      errorMessage:
-        error instanceof Error
-          ? error.message
-          : String(error),
-    });
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
+
+    await completeScan(false, message)
+      .catch((completionError) => {
+        console.error(
+          'Scan-Abschluss konnte nicht bestätigt werden:',
+          completionError,
+        );
+      });
 
     throw error;
   }

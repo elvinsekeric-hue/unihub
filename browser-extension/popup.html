@@ -2,12 +2,16 @@
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+
     <title>UniHub</title>
 
     <style>
       body {
-        width: 310px;
+        width: 330px;
         margin: 0;
         padding: 18px;
         color: #15283a;
@@ -23,6 +27,12 @@
       p {
         color: #647789;
         font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .actions {
+        display: grid;
+        gap: 9px;
       }
 
       button {
@@ -36,7 +46,23 @@
         cursor: pointer;
       }
 
-      #result {
+      button.secondary {
+        color: #315f89;
+        background: #dfeaf3;
+      }
+
+      button.danger {
+        color: #a12620;
+        background: #f7dfdd;
+      }
+
+      button:disabled {
+        cursor: default;
+        opacity: 0.55;
+      }
+
+      #result,
+      #crawl-status {
         margin-top: 14px;
         padding: 12px;
         border-radius: 8px;
@@ -45,19 +71,78 @@
         line-height: 1.6;
       }
 
+      #crawl-status strong,
+      #crawl-status small {
+        display: block;
+      }
+
+      #crawl-status small {
+        margin-top: 4px;
+        color: #647789;
+      }
+
+      .progress {
+        height: 7px;
+        margin-top: 10px;
+        overflow: hidden;
+        border-radius: 99px;
+        background: #dce5ec;
+      }
+
+      .progress > span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: #2f7d59;
+        transition: width 180ms ease;
+      }
+
       .error {
         color: #b42318;
+      }
+
+      .success {
+        color: #21734c;
       }
     </style>
   </head>
 
   <body>
     <h1>UniHub</h1>
-    <p>Übernimmt die aktuell geöffnete ILIAS-Seite.</p>
 
-    <button id="scan">Seite scannen</button>
+    <p>
+      Übernimmt einzelne Seiten oder durchsucht
+      einen gesamten ILIAS-Kurs rekursiv.
+    </p>
 
-    <div id="result">Noch nicht gescannt.</div>
+    <div class="actions">
+      <button id="scan">
+        Aktuelle Seite scannen
+      </button>
+
+      <button
+        id="crawl"
+        class="secondary"
+      >
+        Gesamten Kurs scannen
+      </button>
+
+      <button
+        id="stop"
+        class="danger"
+        hidden
+      >
+        Scan stoppen
+      </button>
+    </div>
+
+    <div id="result">
+      Noch nicht gescannt.
+    </div>
+
+    <div id="crawl-status">
+      Kein automatischer Scan aktiv.
+    </div>
 
     <script src="popup.js"></script>
   </body>
