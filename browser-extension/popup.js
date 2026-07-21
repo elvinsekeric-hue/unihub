@@ -196,9 +196,10 @@ scanButton.addEventListener(
         );
       }
 
-      await sendManualScan(
-        response.payload
-      );
+     await sendManualScan({
+  ...response.payload,
+  crawlStartUrl: null
+});
 
       const {
         counts,

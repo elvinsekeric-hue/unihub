@@ -63,6 +63,8 @@ export interface LearningFile {
 export interface Assignment {
   id: EntityId;
   courseId: EntityId;
+  scanSourceId?: EntityId;
+  folderId?: EntityId;
   iliasRefId: string;
   iliasAssignmentId?: string;
   title: string;
@@ -71,8 +73,13 @@ export interface Assignment {
   startsAt?: IsoDateTime;
   dueAt?: IsoDateTime;
   submittedAt?: IsoDateTime;
-  status: 'not-started' | 'in-progress' | 'submitted' | 'graded';
+  status:
+    | 'not-started'
+    | 'in-progress'
+    | 'submitted'
+    | 'graded';
   isNew: boolean;
+  isRemoved?: boolean;
 }
 
 export interface Announcement {

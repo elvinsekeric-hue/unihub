@@ -46,7 +46,19 @@ async function createSchema(
       is_removed INTEGER NOT NULL DEFAULT 0
     )
   `);
-  
+
+  await addColumn(
+    database,
+    'learning_files',
+    "scan_source_id TEXT NOT NULL DEFAULT 'source:legacy'",
+  );
+
+  await addColumn(
+    database,
+    'learning_files',
+    'is_removed INTEGER NOT NULL DEFAULT 0',
+  );
+
   await database.execute(`
     CREATE TABLE IF NOT EXISTS folders (
       id TEXT PRIMARY KEY NOT NULL,
@@ -62,17 +74,25 @@ async function createSchema(
     )
   `);
 
-  await addColumn(
-    database,
-    'learning_files',
-    "scan_source_id TEXT NOT NULL DEFAULT 'source:legacy'",
-  );
-
-  await addColumn(
-    database,
-    'learning_files',
-    'is_removed INTEGER NOT NULL DEFAULT 0',
-  );
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS assignments (
+      id TEXT PRIMARY KEY NOT NULL,
+      course_id TEXT NOT NULL,
+      scan_source_id TEXT NOT NULL DEFAULT 'source:legacy',
+      folder_id TEXT,
+      ilias_ref_id TEXT NOT NULL,
+      ilias_assignment_id TEXT,
+      title TEXT NOT NULL,
+      url TEXT NOT NULL,
+      description TEXT,
+      starts_at TEXT,
+      due_at TEXT,
+      submitted_at TEXT,
+      status TEXT NOT NULL,
+      is_new INTEGER NOT NULL DEFAULT 0,
+      is_removed INTEGER NOT NULL DEFAULT 0
+    )
+  `);
 
   await database.execute(`
     CREATE TABLE IF NOT EXISTS sync_snapshots (
@@ -111,34 +131,54 @@ async function createSchema(
   `);
 
   await database.execute(`
-    CREATE INDEX IF NOT EXISTS idx_sync_snapshots_source
-    ON sync_snapshots(course_id, scan_source_id)
+    CREATE INDEX IF NOT EXISTS idx_folders_course
+    ON folders(course_id)
   `);
 
   await database.execute(`
-  CREATE INDEX IF NOT EXISTS idx_folders_course
-  ON folders(course_id)
-`);
+    CREATE INDEX IF NOT EXISTS idx_folders_source
+    ON folders(course_id, scan_source_id)
+  `);
 
-await database.execute(`
-  CREATE INDEX IF NOT EXISTS idx_folders_source
-  ON folders(course_id, scan_source_id)
-`);
+  await database.execute(`
+    CREATE INDEX IF NOT EXISTS idx_folders_parent
+    ON folders(parent_folder_id)
+  `);
 
-await database.execute(`
-  CREATE INDEX IF NOT EXISTS idx_folders_parent
-  ON folders(parent_folder_id)
-`);
+  await database.execute(`
+    CREATE INDEX IF NOT EXISTS idx_assignments_course
+    ON assignments(course_id)
+  `);
+
+  await database.execute(`
+    CREATE INDEX IF NOT EXISTS idx_assignments_source
+    ON assignments(course_id, scan_source_id)
+  `);
+
+  await database.execute(`
+    CREATE INDEX IF NOT EXISTS idx_assignments_folder
+    ON assignments(folder_id)
+  `);
+
+  await database.execute(`
+    CREATE INDEX IF NOT EXISTS idx_assignments_due
+    ON assignments(due_at)
+  `);
+
+  await database.execute(`
+    CREATE INDEX IF NOT EXISTS idx_sync_snapshots_source
+    ON sync_snapshots(course_id, scan_source_id)
+  `);
 }
 
 export async function getDatabase(): Promise<Database> {
   if (!databasePromise) {
-    databasePromise = Database.load('sqlite:unihub.db').then(
-      async (database) => {
-        await createSchema(database);
-        return database;
-      },
-    );
+    databasePromise = Database.load(
+      'sqlite:unihub.db',
+    ).then(async (database) => {
+      await createSchema(database);
+      return database;
+    });
   }
 
   return databasePromise;

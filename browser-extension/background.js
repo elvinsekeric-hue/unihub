@@ -249,19 +249,18 @@ async function processCurrentPage(
       );
     }
 
-    const payload = response.payload;
-    const scannedUrl =
-      canonicalizeUrl(payload.pageUrl);
+    const payload = {
+  ...response.payload,
+  crawlStartUrl: state.startUrl
+};
 
-    if (
-  !scannedUrl ||
-  !isSameIliasPage(
-    scannedUrl,
-    state.currentUrl
-  )
-) {
-  processing = false;
-  return;
+const scannedUrl =
+  canonicalizeUrl(payload.pageUrl);
+
+if (!scannedUrl) {
+  throw new Error(
+    'Die geladene ILIAS-Seite besitzt keine gültige URL.'
+  );
 }
 
     /*
@@ -277,16 +276,16 @@ async function processCurrentPage(
     );
 
     state = {
-      ...state,
-      visited: [
-        ...state.visited,
-        scannedUrl
-      ],
-      currentUrl: null,
-      processedPages:
-        state.processedPages + 1,
-      lastError: null
-    };
+  ...state,
+  visited: [
+    ...state.visited,
+    state.currentUrl
+  ],
+  currentUrl: null,
+  processedPages:
+    state.processedPages + 1,
+  lastError: null
+};
 
     await saveState(state);
 
@@ -451,15 +450,9 @@ chrome.runtime.onMessage.addListener(
           if (
   state.running &&
   state.tabId === tabId &&
-  state.currentUrl &&
-  isSameIliasPage(
-    state.currentUrl,
-    message.pageUrl
-  )
+  state.currentUrl
 ) {
-  return processCurrentPage(
-    tabId
-  );
+  return processCurrentPage(tabId);
 }
         })
         .catch(stopWithError);
@@ -549,11 +542,7 @@ chrome.tabs.onUpdated.addListener(
       if (
         state.running &&
         state.tabId === tabId &&
-        state.currentUrl &&
-        isSameIliasPage(
-          state.currentUrl,
-          tab.url
-        )
+        state.currentUrl
       ) {
         await processCurrentPage(tabId);
       }

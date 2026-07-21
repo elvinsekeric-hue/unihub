@@ -26,15 +26,71 @@ function canonicalizeUrl(value) {
   }
 }
 
-function getFolderUrls() {
+function getCrawlUrls() {
   const anchors = Array.from(
     document.querySelectorAll(
-      'a.il_ContainerItemTitle[href*="/go/fold/"], ' +
-      'a.il_ContainerItemTitle[href*="ilObjFolderGUI"]'
+      'a.il_ContainerItemTitle[href], ' +
+      'h3.il_ContainerItemTitle a[href], ' +
+      'a[href*="ilexercisehandlergui"], ' +
+      'a[href*="ilExerciseHandlerGUI"], ' +
+      'a[href*="ilAssignmentPresentationGUI"], ' +
+      'a[href*="ilObjExerciseGUI"], ' +
+      'a[href*="ass_id="]'
     )
   );
 
   const urls = anchors
+    .filter((anchor) => {
+      const href = (
+        anchor.getAttribute('href') ?? ''
+      ).toLocaleLowerCase('de-DE');
+
+      const title = normalizeText(
+        anchor.textContent
+      ).toLocaleLowerCase('de-DE');
+
+      /*
+       * Dateien und direkte Downloads dürfen niemals
+       * Teil der Crawl-Warteschlange werden.
+       */
+      const isFile =
+        href.includes('ilobjfilegui') ||
+        href.includes('cmd=sendfile') ||
+        href.includes('/go/file/') ||
+        href.includes('download');
+
+      if (isFile) {
+        return false;
+      }
+
+      const isFolder =
+        href.includes('/go/fold/') ||
+        href.includes('ilobjfoldergui');
+
+      const isExercise =
+        href.includes('ilexercisehandlergui') ||
+        href.includes(
+          'ilassignmentpresentationgui'
+        ) ||
+        href.includes('ilobjexercisegui') ||
+        href.includes('ass_id=');
+
+      /*
+       * Rückfall nur für das eigentliche
+       * Abgabeobjekt, nicht für Hausübungsblätter.
+       */
+      const isAssignmentContainer =
+        title === 'abgabeordner' ||
+        title.startsWith('abgabeordner ') ||
+        title === 'übungsobjekt' ||
+        title === 'uebungsobjekt';
+
+      return (
+        isFolder ||
+        isExercise ||
+        isAssignmentContainer
+      );
+    })
     .map((anchor) =>
       canonicalizeUrl(
         anchor.getAttribute('href') ?? ''
@@ -53,7 +109,14 @@ function scanIliasPage() {
     )
   );
 
-  const folderUrls = getFolderUrls();
+const folderLinks = Array.from(
+  document.querySelectorAll(
+    'a.il_ContainerItemTitle[href*="/go/fold/"], ' +
+    'a.il_ContainerItemTitle[href*="ilObjFolderGUI"]'
+  )
+);
+
+  const crawlUrls = getCrawlUrls();
 
   const assignmentLinks = Array.from(
     document.querySelectorAll(
@@ -68,13 +131,14 @@ function scanIliasPage() {
     version: 2,
     scannedAt: new Date().toISOString(),
     pageUrl: window.location.href,
+    crawlStartUrl: null,
     pageTitle: normalizeText(document.title),
     counts: {
       files: fileLinks.length,
-      folders: folderUrls.length,
+      folders: folderLinks.length,
       assignments: assignmentLinks.length
     },
-    folderUrls,
+    folderUrls: crawlUrls,
     html: document.documentElement.outerHTML
   };
 }

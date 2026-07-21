@@ -1,3 +1,11 @@
+import {
+  compareIliasAssignments,
+} from './compareIliasAssignments';
+
+import {
+  loadAssignments,
+  saveAssignments,
+} from '../infrastructure/sqlite/assignmentStore';
 import { invoke } from '@tauri-apps/api/core';
 import { compareIliasFiles } from './compareIliasFiles';
 import {
@@ -23,6 +31,7 @@ interface IliasScan {
   version: number;
   scannedAt: string;
   pageUrl: string;
+  crawlStartUrl?: string | null;
   pageTitle: string;
   html: string;
 }
@@ -37,6 +46,11 @@ export interface LiveSyncResult {
   unchangedFiles: number;
   removedFiles: number;
   removedFolders: number;
+  discoveredAssignments: number;
+newAssignments: number;
+changedAssignments: number;
+unchangedAssignments: number;
+removedAssignments: number;
 }
 
 function isFolderPage(pageUrl: string): boolean {
@@ -48,39 +62,84 @@ function isFolderPage(pageUrl: string): boolean {
   );
 }
 
+function isCoursePage(pageUrl: string): boolean {
+  const normalized =
+    pageUrl.toLocaleLowerCase('de-DE');
+
+  return normalized.includes(
+    'ilobjcoursegui',
+  );
+}
+
+function isAssignmentPage(
+  pageUrl: string,
+): boolean {
+  const normalized =
+    pageUrl.toLocaleLowerCase('de-DE');
+
+  return (
+    normalized.includes('ilexercise') ||
+    normalized.includes('ilobjexercise') ||
+    normalized.includes('assignment') ||
+    normalized.includes('ass_id=') ||
+    normalized.includes('exercise')
+  );
+}
+
 async function resolveSyncSource(
   scan: IliasScan,
 ): Promise<ResolvedScanSource> {
   /*
-   * Bekannte Hauptseiten und bekannte Quellen wie das
-   * LDS-Tutorium werden zuerst über die Registry erkannt.
+   * Zuerst versuchen wir die aktuell geöffnete Seite
+   * direkt zu erkennen.
    */
   try {
     return resolveScanSource(scan);
-  } catch (registryError) {
+  } catch (currentPageError) {
     /*
-     * Ein Unterordner hat normalerweise eine neue ref_id,
-     * die nicht in der Registry steht. In diesem Fall
-     * übernehmen wir Kurs und Scan-Quelle aus dem bereits
-     * gespeicherten Ordner.
+     * Bei einem automatischen Crawl verwenden wir als
+     * nächsten Rückfall die ursprüngliche Kursseite.
+     *
+     * Dadurch gehören auch Übungs-, Abgabe- und andere
+     * Spezialseiten weiterhin zum richtigen Kurs.
      */
-    const pageRefId = getPageRefId(scan.pageUrl);
+    if (scan.crawlStartUrl) {
+      try {
+        return resolveScanSource({
+          pageUrl: scan.crawlStartUrl,
+          pageTitle: scan.pageTitle,
+          html: '',
+        });
+      } catch {
+        // Anschließend gespeicherten Ordner prüfen.
+      }
+    }
+
+    /*
+     * Normale Unterordner können über die bereits
+     * gespeicherte ref_id erkannt werden.
+     */
+    const pageRefId =
+      getPageRefId(scan.pageUrl);
 
     if (pageRefId) {
-      const storedFolder = await loadFolderByRefId(pageRefId);
+      const storedFolder =
+        await loadFolderByRefId(pageRefId);
 
       if (
         storedFolder?.scanSourceId &&
         storedFolder.courseId
       ) {
         return {
-          courseId: storedFolder.courseId,
-          scanSourceId: storedFolder.scanSourceId,
+          courseId:
+            storedFolder.courseId,
+          scanSourceId:
+            storedFolder.scanSourceId,
         };
       }
     }
 
-    throw registryError;
+    throw currentPageError;
   }
 }
 
@@ -169,62 +228,148 @@ const currentScan = scan;
         ],
       }));
 
-    const existingFiles = await loadFiles(
+      const scannedAssignments =
+  parsed.assignments.map(
+    (assignment) => ({
+      ...assignment,
+      courseId,
+      scanSourceId,
+      folderId: currentFolderId,
+    }),
+  );
+
+    const pageSupportsFiles =
+  isFolderPage(scan.pageUrl) ||
+  isCoursePage(scan.pageUrl);
+
+const existingFiles = pageSupportsFiles
+  ? await loadFiles(
       courseId,
       true,
       scanSourceId,
       currentFolderId ?? null,
-    );
+    )
+  : [];
 
-    const comparison = compareIliasFiles(
+const comparison = pageSupportsFiles
+  ? compareIliasFiles(
       scannedFiles,
       existingFiles,
-    );
+    )
+  : {
+      filesToSave: [],
+      newFiles: [],
+      changedFiles: [],
+      unchangedFiles: [],
+      removedFiles: [],
+    };
+
+const pageSupportsAssignments =
+  isAssignmentPage(scan.pageUrl) ||
+  parsed.assignments.length > 0;
+
+const existingAssignments =
+  pageSupportsAssignments
+    ? await loadAssignments(
+        courseId,
+        true,
+        scanSourceId,
+        currentFolderId ?? null,
+      )
+    : [];
+
+    
 
     await saveFiles(comparison.filesToSave);
-    await saveFolders(scannedFolders);
+    await saveFolders(scannedFolders)
 
-    const removedFolders =
-      await markMissingFoldersRemoved(
-        courseId,
-        scanSourceId,
-        currentFolderId,
-        scannedFolders.map(
-          (folder) => folder.iliasRefId,
-        ),
-      );
+    const assignmentComparison =
+  pageSupportsAssignments
+    ? compareIliasAssignments(
+        scannedAssignments,
+        existingAssignments,
+      )
+    : {
+        assignmentsToSave: [],
+        newAssignments: [],
+        changedAssignments: [],
+        unchangedAssignments: [],
+        removedAssignments: [],
+      };
+
+await saveAssignments(
+  assignmentComparison.assignmentsToSave,
+);
+
+    const removedFolders = pageSupportsFiles
+  ? await markMissingFoldersRemoved(
+      courseId,
+      scanSourceId,
+      currentFolderId,
+      scannedFolders.map(
+        (folder) => folder.iliasRefId,
+      ),
+    )
+  : 0;
 
     await saveSyncSnapshot({
-      courseId,
-      scanSourceId,
-      startedAt,
-      completedAt:
-        new Date().toISOString(),
-      status: 'success',
-      discovered: scannedFiles.length,
-      changed:
-        comparison.newFiles.length +
-        comparison.changedFiles.length,
-      removed:
-        comparison.removedFiles.length,
-    });
+  courseId,
+  scanSourceId,
+  startedAt,
+  completedAt:
+    new Date().toISOString(),
+  status: 'success',
+  discovered:
+    scannedFiles.length +
+    scannedAssignments.length,
+  changed:
+    comparison.newFiles.length +
+    comparison.changedFiles.length +
+    assignmentComparison
+      .newAssignments.length +
+    assignmentComparison
+      .changedAssignments.length,
+  removed:
+    comparison.removedFiles.length +
+    assignmentComparison
+      .removedAssignments.length,
+});
 
-    const result: LiveSyncResult = {
-      courseId,
-      scanSourceId,
-      discovered: scannedFiles.length,
-      discoveredFolders:
-        scannedFolders.length,
-      newFiles:
-        comparison.newFiles.length,
-      changedFiles:
-        comparison.changedFiles.length,
-      unchangedFiles:
-        comparison.unchangedFiles.length,
-      removedFiles:
-        comparison.removedFiles.length,
-      removedFolders,
-    };
+   const result: LiveSyncResult = {
+  courseId,
+  scanSourceId,
+  discovered: scannedFiles.length,
+  discoveredFolders:
+    scannedFolders.length,
+  discoveredAssignments:
+    scannedAssignments.length,
+
+  newFiles:
+    comparison.newFiles.length,
+  changedFiles:
+    comparison.changedFiles.length,
+  unchangedFiles:
+    comparison.unchangedFiles.length,
+  removedFiles:
+    comparison.removedFiles.length,
+
+  newAssignments:
+    assignmentComparison
+      .newAssignments.length,
+  changedAssignments:
+    assignmentComparison
+      .changedAssignments.length,
+  unchangedAssignments:
+    assignmentComparison
+      .unchangedAssignments.length,
+  removedAssignments:
+    assignmentComparison
+      .removedAssignments.length,
+
+  removedFolders,
+};
+
+    
 
     await completeScan(true);
 

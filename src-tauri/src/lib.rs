@@ -28,6 +28,7 @@ struct IliasScan {
     version: u32,
     scanned_at: String,
     page_url: String,
+    crawl_start_url: Option<String>,
     page_title: String,
     html: String,
 }

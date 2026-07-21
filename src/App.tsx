@@ -24,6 +24,7 @@ import {
 
 import type {
   ActivityItem,
+  Assignment,
   Course,
   Folder,
 } from './domain/models';
@@ -38,7 +39,8 @@ import './App.css';
 type AppView =
   | 'dashboard'
   | 'courses'
-  | 'course';
+  | 'course'
+  | 'assignments';
 
 const iconFor = (
   type: ActivityItem['type'],
@@ -100,14 +102,21 @@ export default function App() {
     useState<AppView>('dashboard');
 
   const [
-    selectedCourse,
-    setSelectedCourse,
-  ] = useState('all');
+  selectedCourse,
+  setSelectedCourse,
+] = useState('all');
 
-  const [
-    activeFolderId,
-    setActiveFolderId,
-  ] = useState<string | undefined>();
+const [
+  assignmentStatus,
+  setAssignmentStatus,
+] = useState<
+  'all' | Assignment['status']
+>('all');
+
+const [
+  activeFolderId,
+  setActiveFolderId,
+] = useState<string | undefined>();
 
   const [query, setQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -299,6 +308,61 @@ export default function App() {
         : !file.folderId
     ) ?? [];
 
+const visibleAssignments = useMemo(
+  () =>
+    (dashboard?.assignments ?? [])
+      .filter((assignment) => {
+        const matchesCourse =
+          selectedCourse === 'all' ||
+          assignment.courseId ===
+            selectedCourse;
+
+        const matchesStatus =
+          assignmentStatus === 'all' ||
+          assignment.status ===
+            assignmentStatus;
+
+        const searchable =
+          `${assignment.title} ` +
+          `${assignment.description ?? ''}`;
+
+        const matchesQuery =
+          !query.trim() ||
+          searchable
+            .toLocaleLowerCase('de-DE')
+            .includes(
+              query
+                .trim()
+                .toLocaleLowerCase('de-DE'),
+            );
+
+        return (
+          matchesCourse &&
+          matchesStatus &&
+          matchesQuery
+        );
+      })
+      .sort((left, right) => {
+        if (!left.dueAt) {
+          return 1;
+        }
+
+        if (!right.dueAt) {
+          return -1;
+        }
+
+        return left.dueAt.localeCompare(
+          right.dueAt,
+        );
+      }),
+  [
+    dashboard,
+    selectedCourse,
+    assignmentStatus,
+    query,
+  ],
+);
+
   if (!dashboard) {
     return (
       <div className="app-loading">
@@ -318,6 +382,11 @@ export default function App() {
     setView('dashboard');
     setActiveFolderId(undefined);
   }
+
+function showAssignments(): void {
+  setView('assignments');
+  setActiveFolderId(undefined);
+}
 
   function showCourses(): void {
     setView('courses');
@@ -355,6 +424,7 @@ export default function App() {
   }
 
   return (
+
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
@@ -382,6 +452,19 @@ export default function App() {
             ⌂ <span>Übersicht</span>
           </button>
 
+<button
+  className={
+    `nav-item ${
+      view === 'assignments'
+        ? 'active'
+        : ''
+    }`
+  }
+  onClick={showAssignments}
+>
+  ✓ <span>Aufgaben</span>
+</button>
+
           <button
             className={
               `nav-item ${
@@ -394,10 +477,6 @@ export default function App() {
             onClick={showCourses}
           >
             ▣ <span>Kurse</span>
-          </button>
-
-          <button className="nav-item">
-            ✓ <span>Aufgaben</span>
           </button>
 
           <button className="nav-item">
@@ -428,6 +507,8 @@ export default function App() {
             </p>
 
             <h1>
+              {view === 'assignments' &&
+  'Abgaben, Fristen und Bearbeitungsstatus.'}
               {view === 'dashboard' &&
                 'Guten Tag, Elvin.'}
 
@@ -939,6 +1020,157 @@ export default function App() {
             </div>
           </section>
         )}
+        {view === 'assignments' && (
+  <section className="assignments-page">
+    <div className="assignment-filters">
+      <select
+        value={selectedCourse}
+        onChange={(event) =>
+          setSelectedCourse(
+            event.target.value,
+          )
+        }
+      >
+        <option value="all">
+          Alle Kurse
+        </option>
+
+        {courses.map((course) => (
+          <option
+            key={course.id}
+            value={course.id}
+          >
+            {course.shortName}
+          </option>
+        ))}
+      </select>
+
+      <select
+        value={assignmentStatus}
+        onChange={(event) =>
+          setAssignmentStatus(
+            event.target.value as
+              | 'all'
+              | Assignment['status'],
+          )
+        }
+      >
+        <option value="all">
+          Alle Status
+        </option>
+        <option value="not-started">
+          Nicht begonnen
+        </option>
+        <option value="in-progress">
+          In Bearbeitung
+        </option>
+        <option value="submitted">
+          Abgegeben
+        </option>
+        <option value="graded">
+          Bewertet
+        </option>
+      </select>
+    </div>
+
+    <div className="assignment-list">
+      {visibleAssignments.map(
+        (assignment) => {
+          const course = courses.find(
+            (entry) =>
+              entry.id ===
+              assignment.courseId,
+          );
+
+          return (
+            <button
+              className="assignment-row"
+              key={assignment.id}
+              onClick={() =>
+                safeOpen(assignment.url)
+              }
+            >
+              <span
+                className="course-badge"
+                style={{
+                  background:
+                    course?.color ??
+                    '#315a82',
+                }}
+              >
+                {course?.shortName ?? '?'}
+              </span>
+
+              <span className="assignment-body">
+                <span className="assignment-title">
+                  <strong>
+                    {assignment.title}
+                  </strong>
+
+                  {assignment.isNew && (
+                    <em>NEU</em>
+                  )}
+                </span>
+
+                {assignment.description && (
+                  <small>
+                    {assignment.description}
+                  </small>
+                )}
+
+                <span className="assignment-meta">
+                  <span>
+                    Status:{' '}
+                    {assignment.status ===
+                      'not-started' &&
+                      'Nicht begonnen'}
+                    {assignment.status ===
+                      'in-progress' &&
+                      'In Bearbeitung'}
+                    {assignment.status ===
+                      'submitted' &&
+                      'Abgegeben'}
+                    {assignment.status ===
+                      'graded' &&
+                      'Bewertet'}
+                  </span>
+
+                  {assignment.dueAt && (
+                    <span className="urgent">
+                      Fällig{' '}
+                      {relativeDate(
+                        assignment.dueAt,
+                      )}
+                    </span>
+                  )}
+                </span>
+              </span>
+
+              <span className="chevron">
+                ↗
+              </span>
+            </button>
+          );
+        },
+      )}
+
+      {visibleAssignments.length === 0 && (
+        <div className="empty-panel">
+          <strong>
+            Keine Abgaben gefunden.
+          </strong>
+
+          <p>
+            Starte einen vollständigen
+            Kursscan, damit UniHub die
+            Übungs- und Abgabeseiten
+            einliest.
+          </p>
+        </div>
+      )}
+    </div>
+  </section>
+)}
       </main>
     </div>
   );
