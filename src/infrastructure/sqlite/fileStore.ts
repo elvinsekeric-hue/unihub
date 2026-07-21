@@ -164,6 +164,7 @@ export async function loadFiles(
   courseId?: string,
   includeRemoved = false,
   scanSourceId?: string,
+  folderId?: string | null,
 ): Promise<LearningFile[]> {
   const database = await getDatabase();
 
@@ -180,6 +181,18 @@ export async function loadFiles(
       `scan_source_id = $${parameters.length + 1}`,
     );
     parameters.push(scanSourceId);
+  }
+
+  /*
+   * undefined = kein Ordnerfilter
+   * null      = Dateien direkt auf einer Kurs-Hauptseite
+   * string    = Dateien innerhalb dieses Ordners
+   */
+  if (folderId === null) {
+    conditions.push('folder_id IS NULL');
+  } else if (folderId !== undefined) {
+    conditions.push(`folder_id = $${parameters.length + 1}`);
+    parameters.push(folderId);
   }
 
   if (!includeRemoved) {

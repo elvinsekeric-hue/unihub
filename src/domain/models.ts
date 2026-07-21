@@ -31,6 +31,7 @@ export interface Course {
 export interface Folder {
   id: EntityId;
   courseId: EntityId;
+  scanSourceId?: EntityId;
   parentFolderId?: EntityId;
   iliasRefId: string;
   title: string;

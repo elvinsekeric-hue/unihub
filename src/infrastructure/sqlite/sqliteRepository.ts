@@ -1,3 +1,4 @@
+import { loadFolders } from './folderStore';
 import type {
   ActivityItem,
   Assignment,
@@ -16,7 +17,6 @@ import {
   countFiles,
   loadFiles,
   saveFiles,
-
 } from './fileStore';
 
 const LDS_COURSE_ID = 'course:lds';
@@ -78,9 +78,9 @@ export class SQLiteUniHubRepository
     return mockRepository.getCourses();
   }
 
-  async getFolders(courseId?: EntityId): Promise<Folder[]> {
-    return mockRepository.getFolders(courseId);
-  }
+ async getFolders(courseId?: EntityId): Promise<Folder[]> {
+  return loadFolders(courseId);
+}
 
   async getFiles(
     courseId?: EntityId,

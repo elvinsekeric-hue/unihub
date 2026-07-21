@@ -23,6 +23,89 @@ const pageUrl =
   '&ref_id=4364743';
 
 describe('parseIliasPage', () => {
+  it('liest Ordner aus einer ILIAS-Seite', () => {
+  const html = `
+    <html>
+      <body>
+        <a
+          class="il_ContainerItemTitle"
+          href="https://ilias3.uni-stuttgart.de/go/fold/123456"
+        >
+          Vorlesung
+        </a>
+
+        <a
+          class="il_ContainerItemTitle"
+          href="ilias.php?cmdClass=ilObjFolderGUI&ref_id=654321"
+        >
+          Tutorium
+        </a>
+      </body>
+    </html>
+  `;
+
+  const result = parseIliasPage(
+    html,
+    'course:lds',
+    'https://ilias3.uni-stuttgart.de/',
+  );
+
+  expect(result.folders).toEqual([
+    {
+      id: 'folder:123456',
+      courseId: 'course:lds',
+      iliasRefId: '123456',
+      title: 'Vorlesung',
+      url:
+        'https://ilias3.uni-stuttgart.de/go/fold/123456',
+      path: ['Vorlesung'],
+    },
+    {
+      id: 'folder:654321',
+      courseId: 'course:lds',
+      iliasRefId: '654321',
+      title: 'Tutorium',
+      url:
+        'https://ilias3.uni-stuttgart.de/' +
+        'ilias.php?cmdClass=ilObjFolderGUI&ref_id=654321',
+      path: ['Tutorium'],
+    },
+  ]);
+});
+
+it('ordnet Dateien der aktuell geöffneten Ordnerseite zu', () => {
+  const folderHtml = `
+    <html>
+      <body>
+        <h3 class="il_ContainerItemTitle">
+          <a
+            class="il_ContainerItemTitle"
+            href="ilias.php?cmdClass=ilObjFileGUI&ref_id=777777"
+          >
+            Beispiel.pdf
+          </a>
+        </h3>
+      </body>
+    </html>
+  `;
+
+  const result = parseIliasPage(
+    folderHtml,
+    'course:lds',
+    'https://ilias3.uni-stuttgart.de/' +
+      'ilias.php?cmdClass=ilObjFolderGUI' +
+      '&ref_id=123456',
+  );
+
+  expect(result.files[0]).toMatchObject({
+    id: 'file:777777',
+    courseId: 'course:lds',
+    folderId: 'folder:123456',
+    iliasRefId: '777777',
+    title: 'Beispiel.pdf',
+  });
+});
+
   it('erkennt alle 13 Tutoriumsblätter', () => {
     const result = parseIliasPage(html, 'course:lds', pageUrl);
 
