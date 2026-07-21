@@ -17,62 +17,101 @@ function getMimeType(fileType?: string): string | undefined {
     pdf: 'application/pdf',
     zip: 'application/zip',
     doc: 'application/msword',
-    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    docx:
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     ppt: 'application/vnd.ms-powerpoint',
-    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    pptx:
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     xls: 'application/vnd.ms-excel',
-    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    xlsx:
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   };
 
   return normalized ? mimeTypes[normalized] : undefined;
 }
 
+function cleanTitle(value: string): string {
+  return normalizeText(value)
+    .replace(/\u00a0/g, ' ')
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
+    .replace(/[`´'"]+$/g, '')
+    .trim();
+}
+
 function getFileTitle(anchor: HTMLAnchorElement): string {
-  const directTitle = normalizeText(anchor.textContent);
-
-  if (directTitle) {
-    return directTitle;
-  }
-
-  const heading = anchor.closest('h3.il_ContainerItemTitle');
+  const heading = anchor.closest<HTMLHeadingElement>(
+    'h3.il_ContainerItemTitle',
+  );
 
   if (!heading) {
-    return '';
+    return cleanTitle(anchor.textContent ?? '');
+  }
+
+  /*
+   * Bei ILIAS Stuttgart ist der Download-Link häufig leer und der Titel
+   * steht als direkter Textknoten daneben.
+   */
+  const directText = Array.from(heading.childNodes)
+    .filter((node) => node.nodeType === Node.TEXT_NODE)
+    .map((node) => node.textContent ?? '')
+    .join(' ');
+
+  const titleFromTextNode = cleanTitle(directText);
+
+  if (titleFromTextNode) {
+    return titleFromTextNode;
+  }
+
+  const titleFromAnchor = cleanTitle(anchor.textContent ?? '');
+
+  if (titleFromAnchor) {
+    return titleFromAnchor;
   }
 
   const clone = heading.cloneNode(true) as HTMLElement;
 
   clone
     .querySelectorAll(
-      'a, button, span, .glyph, [aria-label="Vorschau"]',
+      '[aria-label="Vorschau"], button, .glyph, script, style',
     )
     .forEach((element) => element.remove());
 
-  return normalizeText(clone.textContent);
+  return cleanTitle(clone.textContent ?? '');
 }
 
 function getDescription(container: Element): string | undefined {
-  const explicitDescription = normalizeText(
-    container.querySelector('.il_Description')?.textContent,
-  );
+  const descriptionSelectors = [
+    '.il_Description',
+    '.ilContainerListItemDescription',
+    '.il_ContainerItemDescription',
+    '.ilListItemDescription',
+  ];
 
-  if (explicitDescription) {
-    return explicitDescription;
+  for (const selector of descriptionSelectors) {
+    const text = normalizeText(
+      container.querySelector(selector)?.textContent,
+    );
+
+    if (text) {
+      return text;
+    }
   }
 
-  const titleHeading = container.querySelector(
-    'h3.il_ContainerItemTitle',
+  /*
+   * Fallback für ILIAS-Seiten, bei denen die Beschreibung keinen
+   * eindeutigen CSS-Klassennamen besitzt.
+   */
+  const containerText = normalizeText(container.textContent);
+
+  const correctionMatch = containerText.match(
+    /Aufgabe\s+\d+\s+wurde\s+überarbeitet\/korrigiert\.?/i,
   );
 
-  const titleContainer =
-    titleHeading?.closest('.il_ContainerItemTitle') ??
-    titleHeading?.parentElement;
+  if (correctionMatch) {
+    return correctionMatch[0];
+  }
 
-  const possibleDescription = normalizeText(
-    titleContainer?.nextElementSibling?.textContent,
-  );
-
-  return possibleDescription || undefined;
+  return undefined;
 }
 
 function getPropertyByPattern(
@@ -96,19 +135,27 @@ export function parseFiles(
   );
 
   const pageRefId = getPageRefId(pageUrl);
+
   const pageIsFolder =
     pageUrl.toLowerCase().includes('ilobjfoldergui') ||
     pageUrl.includes('/go/fold/');
 
   for (const anchor of anchors) {
     const title = getFileTitle(anchor);
+
     const url = toAbsoluteUrl(
       anchor.getAttribute('href') ?? '',
       pageUrl,
     );
+
     const refId = getQueryParameter(url, 'ref_id');
 
-    if (!title || !url || !refId || seenRefIds.has(refId)) {
+    if (
+      !title ||
+      !url ||
+      !refId ||
+      seenRefIds.has(refId)
+    ) {
       continue;
     }
 

@@ -81,9 +81,11 @@ useEffect(() => {
           );
 
           console.log(
-            `ILIAS synchronisiert: ${result.discovered} Dateien, ` +
-              `${result.newFiles} neu.`,
-          );
+  `ILIAS synchronisiert: ${result.discovered} Dateien – ` +
+    `${result.newFiles} neu, ` +
+    `${result.changedFiles} geändert, ` +
+    `${result.unchangedFiles} unverändert.`,
+);
         } catch (error) {
           console.error(
             'ILIAS-Scan konnte nicht verarbeitet werden:',

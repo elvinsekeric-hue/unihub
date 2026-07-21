@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { LearningFile } from '../domain/models';
+import { compareIliasFiles } from './compareIliasFiles';
 import { parseIliasPage } from '../infrastructure/ilias/parser';
 import {
   loadFiles,
@@ -18,13 +18,11 @@ interface IliasScan {
 export interface LiveSyncResult {
   discovered: number;
   newFiles: number;
+  changedFiles: number;
+  unchangedFiles: number;
 }
 
 function resolveCourseId(scan: IliasScan): string {
-  /*
-   * Ticket #007D unterstützt zunächst den bereits getesteten LDS-Kurs.
-   * Die automatische Kurszuordnung folgt im nächsten Ticket.
-   */
   if (
     scan.pageUrl.includes('4364743') ||
     scan.pageTitle
@@ -39,20 +37,6 @@ function resolveCourseId(scan: IliasScan): string {
   );
 }
 
-function markNewFiles(
-  parsedFiles: LearningFile[],
-  existingFiles: LearningFile[],
-): LearningFile[] {
-  const existingRefIds = new Set(
-    existingFiles.map((file) => file.iliasRefId),
-  );
-
-  return parsedFiles.map((file) => ({
-    ...file,
-    isNew: !existingRefIds.has(file.iliasRefId),
-  }));
-}
-
 export async function importLatestIliasScan():
 Promise<LiveSyncResult | null> {
   const scan = await invoke<IliasScan | null>(
@@ -64,7 +48,9 @@ Promise<LiveSyncResult | null> {
   }
 
   if (scan.source !== 'unihub-ilias-extension') {
-    throw new Error('Der empfangene Scan stammt nicht von UniHub.');
+    throw new Error(
+      'Der empfangene Scan stammt nicht von UniHub.',
+    );
   }
 
   const courseId = resolveCourseId(scan);
@@ -77,15 +63,17 @@ Promise<LiveSyncResult | null> {
 
   const existingFiles = await loadFiles(courseId);
 
-  const filesToSave = markNewFiles(
+  const comparison = compareIliasFiles(
     parsed.files,
     existingFiles,
   );
 
-  await saveFiles(filesToSave);
+  await saveFiles(comparison.filesToSave);
 
   return {
-    discovered: filesToSave.length,
-    newFiles: filesToSave.filter((file) => file.isNew).length,
+    discovered: comparison.filesToSave.length,
+    newFiles: comparison.newFiles.length,
+    changedFiles: comparison.changedFiles.length,
+    unchangedFiles: comparison.unchangedFiles.length,
   };
 }
