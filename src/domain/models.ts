@@ -55,6 +55,7 @@ export interface LearningFile {
   etag?: string;
   isNew: boolean;
   isDownloaded: boolean;
+  isRemoved: boolean;
 }
 
 export interface Assignment {

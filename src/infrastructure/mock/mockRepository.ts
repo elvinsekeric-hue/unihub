@@ -71,6 +71,7 @@ const files: LearningFile[] = [
     availableAt: '2026-07-13T17:00:00+02:00',
     isNew: true,
     isDownloaded: false,
+    isRemoved: false,
   },
   {
     id: 'file:4510376',
@@ -83,6 +84,7 @@ const files: LearningFile[] = [
     description: 'Aufgabe 2 wurde überarbeitet/korrigiert.',
     isNew: false,
     isDownloaded: false,
+    isRemoved: false,
   },
 ];
 

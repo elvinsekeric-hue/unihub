@@ -2,7 +2,26 @@ import Database from '@tauri-apps/plugin-sql';
 
 let databasePromise: Promise<Database> | undefined;
 
-async function createSchema(database: Database): Promise<void> {
+async function addRemovedColumn(
+  database: Database,
+): Promise<void> {
+  try {
+    await database.execute(`
+      ALTER TABLE learning_files
+      ADD COLUMN is_removed INTEGER NOT NULL DEFAULT 0
+    `);
+  } catch (error) {
+    const message = String(error).toLowerCase();
+
+    if (!message.includes('duplicate column')) {
+      throw error;
+    }
+  }
+}
+
+async function createSchema(
+  database: Database,
+): Promise<void> {
   await database.execute(`
     CREATE TABLE IF NOT EXISTS learning_files (
       id TEXT PRIMARY KEY NOT NULL,
@@ -20,7 +39,24 @@ async function createSchema(database: Database): Promise<void> {
       last_modified_at TEXT,
       etag TEXT,
       is_new INTEGER NOT NULL DEFAULT 0,
-      is_downloaded INTEGER NOT NULL DEFAULT 0
+      is_downloaded INTEGER NOT NULL DEFAULT 0,
+      is_removed INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  await addRemovedColumn(database);
+
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS sync_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      course_id TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      completed_at TEXT NOT NULL,
+      status TEXT NOT NULL,
+      discovered INTEGER NOT NULL,
+      changed INTEGER NOT NULL,
+      removed INTEGER NOT NULL,
+      error_message TEXT
     )
   `);
 

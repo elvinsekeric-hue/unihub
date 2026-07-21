@@ -17,6 +17,7 @@ function createFile(
     pageCount: 2,
     isNew: false,
     isDownloaded: false,
+    isRemoved: false,
     ...overrides,
   };
 }
@@ -84,7 +85,7 @@ describe('compareIliasFiles', () => {
         title: 'Tutoriumsblatt02',
       }),
     ];
-
+    
     const incomingFiles = [
       createFile({
         id: 'file:1',
@@ -112,4 +113,17 @@ describe('compareIliasFiles', () => {
     expect(result.unchangedFiles).toHaveLength(1);
     expect(result.filesToSave).toHaveLength(3);
   });
+
+  it('erkennt eine entfernte Datei', () => {
+  const existing = createFile({
+    iliasRefId: '1',
+  });
+
+  const result = compareIliasFiles([], [existing]);
+
+  expect(result.removedFiles).toHaveLength(1);
+  expect(result.removedFiles[0].isRemoved).toBe(true);
+  expect(result.filesToSave).toHaveLength(1);
+});
+
 });

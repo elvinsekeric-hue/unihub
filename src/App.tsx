@@ -85,6 +85,7 @@ useEffect(() => {
     `${result.newFiles} neu, ` +
     `${result.changedFiles} geändert, ` +
     `${result.unchangedFiles} unverändert.`,
+     `${result.removedFiles} entfernt.`,
 );
         } catch (error) {
           console.error(

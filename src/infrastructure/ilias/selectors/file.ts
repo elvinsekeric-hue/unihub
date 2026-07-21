@@ -196,10 +196,9 @@ export function parseFiles(
     files.push({
       id: `file:${refId}`,
       courseId,
-      folderId:
-        pageIsFolder && pageRefId
-          ? `folder:${pageRefId}`
-          : undefined,
+      folderId: pageIsFolder && pageRefId
+        ? `folder:${pageRefId}`
+        : undefined,
       iliasRefId: refId,
       title,
       url,
@@ -219,6 +218,7 @@ export function parseFiles(
         : undefined,
       isNew: false,
       isDownloaded: false,
+      isRemoved: false
     });
   }
 

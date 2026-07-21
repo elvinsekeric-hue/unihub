@@ -4,6 +4,7 @@ import { parseIliasPage } from '../infrastructure/ilias/parser';
 import {
   loadFiles,
   saveFiles,
+  saveSyncSnapshot,
 } from '../infrastructure/sqlite/fileStore';
 
 interface IliasScan {
@@ -20,6 +21,7 @@ export interface LiveSyncResult {
   newFiles: number;
   changedFiles: number;
   unchangedFiles: number;
+  removedFiles: number;
 }
 
 function resolveCourseId(scan: IliasScan): string {
@@ -39,6 +41,8 @@ function resolveCourseId(scan: IliasScan): string {
 
 export async function importLatestIliasScan():
 Promise<LiveSyncResult | null> {
+  const startedAt = new Date().toISOString();
+
   const scan = await invoke<IliasScan | null>(
     'take_latest_ilias_scan',
   );
@@ -47,33 +51,61 @@ Promise<LiveSyncResult | null> {
     return null;
   }
 
-  if (scan.source !== 'unihub-ilias-extension') {
-    throw new Error(
-      'Der empfangene Scan stammt nicht von UniHub.',
-    );
-  }
-
   const courseId = resolveCourseId(scan);
 
-  const parsed = parseIliasPage(
-    scan.html,
-    courseId,
-    scan.pageUrl,
-  );
+  try {
+    const parsed = parseIliasPage(
+      scan.html,
+      courseId,
+      scan.pageUrl,
+    );
 
-  const existingFiles = await loadFiles(courseId);
+    const existingFiles = await loadFiles(
+      courseId,
+      true,
+    );
 
-  const comparison = compareIliasFiles(
-    parsed.files,
-    existingFiles,
-  );
+    const comparison = compareIliasFiles(
+      parsed.files,
+      existingFiles,
+    );
 
-  await saveFiles(comparison.filesToSave);
+    await saveFiles(comparison.filesToSave);
 
-  return {
-    discovered: comparison.filesToSave.length,
-    newFiles: comparison.newFiles.length,
-    changedFiles: comparison.changedFiles.length,
-    unchangedFiles: comparison.unchangedFiles.length,
-  };
+    await saveSyncSnapshot({
+      courseId,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      status: 'success',
+      discovered: parsed.files.length,
+      changed:
+        comparison.newFiles.length +
+        comparison.changedFiles.length,
+      removed: comparison.removedFiles.length,
+    });
+
+    return {
+      discovered: parsed.files.length,
+      newFiles: comparison.newFiles.length,
+      changedFiles: comparison.changedFiles.length,
+      unchangedFiles: comparison.unchangedFiles.length,
+      removedFiles: comparison.removedFiles.length,
+    };
+  } catch (error) {
+    await saveSyncSnapshot({
+      courseId,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      status: 'failed',
+      discovered: 0,
+      changed: 0,
+      removed: 0,
+      errorMessage:
+        error instanceof Error
+          ? error.message
+          : String(error),
+    });
+
+    throw error;
+  }
 }

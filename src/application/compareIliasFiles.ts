@@ -5,6 +5,7 @@ export interface FileComparisonResult {
   newFiles: LearningFile[];
   changedFiles: LearningFile[];
   unchangedFiles: LearningFile[];
+  removedFiles: LearningFile[];
 }
 
 function hasFileChanged(
@@ -35,6 +36,10 @@ export function compareIliasFiles(
     existingFiles.map((file) => [file.iliasRefId, file]),
   );
 
+  const incomingRefIds = new Set(
+    incomingFiles.map((file) => file.iliasRefId),
+  );
+
   const newFiles: LearningFile[] = [];
   const changedFiles: LearningFile[] = [];
   const unchangedFiles: LearningFile[] = [];
@@ -48,18 +53,21 @@ export function compareIliasFiles(
       newFiles.push({
         ...incomingFile,
         isNew: true,
+        isRemoved: false,
       });
-
       continue;
     }
 
-    if (hasFileChanged(incomingFile, existingFile)) {
+    if (
+      existingFile.isRemoved ||
+      hasFileChanged(incomingFile, existingFile)
+    ) {
       changedFiles.push({
         ...incomingFile,
         isNew: true,
         isDownloaded: existingFile.isDownloaded,
+        isRemoved: false,
       });
-
       continue;
     }
 
@@ -67,17 +75,32 @@ export function compareIliasFiles(
       ...incomingFile,
       isNew: false,
       isDownloaded: existingFile.isDownloaded,
+      isRemoved: false,
     });
   }
+
+  const removedFiles = existingFiles
+    .filter(
+      (file) =>
+        !file.isRemoved &&
+        !incomingRefIds.has(file.iliasRefId),
+    )
+    .map((file) => ({
+      ...file,
+      isNew: false,
+      isRemoved: true,
+    }));
 
   return {
     filesToSave: [
       ...newFiles,
       ...changedFiles,
       ...unchangedFiles,
+      ...removedFiles,
     ],
     newFiles,
     changedFiles,
     unchangedFiles,
+    removedFiles,
   };
 }

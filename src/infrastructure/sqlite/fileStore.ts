@@ -1,4 +1,8 @@
-import type { LearningFile } from '../../domain/models';
+
+import type {
+  LearningFile,
+  SyncSnapshot,
+} from '../../domain/models';
 import { getDatabase } from './database';
 
 interface LearningFileRow {
@@ -18,6 +22,7 @@ interface LearningFileRow {
   etag: string | null;
   is_new: number;
   is_downloaded: number;
+  is_removed: number;
 }
 
 function mapRow(row: LearningFileRow): LearningFile {
@@ -38,6 +43,7 @@ function mapRow(row: LearningFileRow): LearningFile {
     etag: row.etag ?? undefined,
     isNew: row.is_new === 1,
     isDownloaded: row.is_downloaded === 1,
+    isRemoved: row.is_removed === 1,
   };
 }
 
@@ -65,11 +71,13 @@ export async function saveFiles(
           last_modified_at,
           etag,
           is_new,
-          is_downloaded
+          is_downloaded,
+          is_removed
         )
         VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8,
-          $9, $10, $11, $12, $13, $14, $15, $16
+          $9, $10, $11, $12, $13, $14, $15, $16,
+          $17
         )
         ON CONFLICT(ilias_ref_id) DO UPDATE SET
           id = excluded.id,
@@ -86,7 +94,8 @@ export async function saveFiles(
           last_modified_at = excluded.last_modified_at,
           etag = excluded.etag,
           is_new = excluded.is_new,
-          is_downloaded = excluded.is_downloaded
+          is_downloaded = excluded.is_downloaded,
+          is_removed = excluded.is_removed
       `,
       [
         file.id,
@@ -105,31 +114,80 @@ export async function saveFiles(
         file.etag ?? null,
         file.isNew ? 1 : 0,
         file.isDownloaded ? 1 : 0,
+        file.isRemoved ? 1 : 0,
       ],
     );
   }
 }
 
+export async function saveSyncSnapshot(
+  snapshot: SyncSnapshot,
+): Promise<void> {
+  const database = await getDatabase();
+
+  await database.execute(
+    `
+      INSERT INTO sync_snapshots (
+        course_id,
+        started_at,
+        completed_at,
+        status,
+        discovered,
+        changed,
+        removed,
+        error_message
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `,
+    [
+      snapshot.courseId,
+      snapshot.startedAt,
+      snapshot.completedAt,
+      snapshot.status,
+      snapshot.discovered,
+      snapshot.changed,
+      snapshot.removed,
+      snapshot.errorMessage ?? null,
+    ],
+  );
+}
+
 export async function loadFiles(
   courseId?: string,
+  includeRemoved = false,
 ): Promise<LearningFile[]> {
   const database = await getDatabase();
 
-  const rows = courseId
-    ? await database.select<LearningFileRow[]>(
-        `
-          SELECT *
-          FROM learning_files
-          WHERE course_id = $1
-          ORDER BY available_at DESC, title DESC
-        `,
-        [courseId],
-      )
-    : await database.select<LearningFileRow[]>(`
-        SELECT *
-        FROM learning_files
-        ORDER BY available_at DESC, title DESC
-      `);
+  const removedCondition = includeRemoved
+    ? ''
+    : 'is_removed = 0';
+
+  const conditions: string[] = [];
+  const parameters: unknown[] = [];
+
+  if (courseId) {
+    conditions.push(`course_id = $${parameters.length + 1}`);
+    parameters.push(courseId);
+  }
+
+  if (removedCondition) {
+    conditions.push(removedCondition);
+  }
+
+  const whereClause =
+    conditions.length > 0
+      ? `WHERE ${conditions.join(' AND ')}`
+      : '';
+
+  const rows = await database.select<LearningFileRow[]>(
+    `
+      SELECT *
+      FROM learning_files
+      ${whereClause}
+      ORDER BY available_at DESC, title DESC
+    `,
+    parameters,
+  );
 
   return rows.map(mapRow);
 }
