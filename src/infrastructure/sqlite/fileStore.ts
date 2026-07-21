@@ -1,4 +1,3 @@
-
 import type {
   LearningFile,
   SyncSnapshot,
@@ -200,4 +199,62 @@ export async function countFiles(): Promise<number> {
   );
 
   return Number(rows[0]?.count ?? 0);
+}
+
+export interface StoredSyncSnapshot extends SyncSnapshot {
+  id: number;
+}
+
+interface SyncSnapshotRow {
+  id: number;
+  course_id: string;
+  started_at: string;
+  completed_at: string;
+  status: 'success' | 'partial' | 'failed';
+  discovered: number;
+  changed: number;
+  removed: number;
+  error_message: string | null;
+}
+
+export async function loadSyncSnapshots(
+  courseId?: string,
+  limit = 10,
+): Promise<StoredSyncSnapshot[]> {
+  const database = await getDatabase();
+
+  const safeLimit = Math.max(1, Math.min(limit, 100));
+
+  const rows = courseId
+    ? await database.select<SyncSnapshotRow[]>(
+        `
+          SELECT *
+          FROM sync_snapshots
+          WHERE course_id = $1
+          ORDER BY completed_at DESC
+          LIMIT $2
+        `,
+        [courseId, safeLimit],
+      )
+    : await database.select<SyncSnapshotRow[]>(
+        `
+          SELECT *
+          FROM sync_snapshots
+          ORDER BY completed_at DESC
+          LIMIT $1
+        `,
+        [safeLimit],
+      );
+
+  return rows.map((row) => ({
+    id: row.id,
+    courseId: row.course_id,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    status: row.status,
+    discovered: row.discovered,
+    changed: row.changed,
+    removed: row.removed,
+    errorMessage: row.error_message ?? undefined,
+  }));
 }

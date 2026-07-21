@@ -73,3 +73,53 @@ h1 { margin: 0; font-size: 30px; letter-spacing: -0.6px; }
   .right-column > .section-heading { grid-column: 1 / -1; }
   .status-card { margin-top: 0; }
 }
+.sync-history {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(49, 90, 130, 0.14);
+}
+
+.sync-history > strong {
+  font-size: 13px;
+}
+
+.sync-history > small {
+  color: #6b7e90;
+}
+
+.sync-history-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.sync-history-item > span {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(47, 125, 89, 0.12);
+  color: #2f7d59;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.sync-history-item div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sync-history-item strong {
+  font-size: 12px;
+}
+
+.sync-history-item small {
+  color: #6b7e90;
+  font-size: 11px;
+  line-height: 1.4;
+}

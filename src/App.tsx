@@ -1,3 +1,9 @@
+import {
+  loadRecentSyncHistory,
+} from './application/syncHistory';
+import type {
+  StoredSyncSnapshot,
+} from './infrastructure/sqlite/fileStore';
 import { listen } from '@tauri-apps/api/event';
 import { importLatestIliasScan } from './application/syncLiveIliasScan';
 import { useEffect, useMemo, useState } from 'react';
@@ -39,20 +45,29 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState('Noch nicht synchronisiert');
+  const [syncHistory, setSyncHistory] = useState<
+  StoredSyncSnapshot[]
+>([]);
 
 async function refreshDashboard(): Promise<void> {
   const data = await loadDashboard(appRepository);
   setDashboard(data);
 }
 
-useEffect(() => {
-  refreshDashboard().catch((error) => {
-    console.error(
-      'Dashboard konnte nicht geladen werden:',
-      error,
-    );
-  });
-}, []);
+async function refreshSyncHistory(): Promise<void> {
+  const history = await loadRecentSyncHistory(5);
+  setSyncHistory(history);
+}
+
+Promise.all([
+  refreshDashboard(),
+  refreshSyncHistory(),
+]).catch((error) => {
+  console.error(
+    'UniHub konnte nicht vollständig geladen werden:',
+    error,
+  );
+});
 
 useEffect(() => {
   let disposed = false;
@@ -72,6 +87,7 @@ useEffect(() => {
           }
 
           await refreshDashboard();
+          await refreshSyncHistory();
 
           setLastSync(
             `Heute, ${new Date().toLocaleTimeString('de-DE', {
@@ -224,10 +240,60 @@ useEffect(() => {
             </div>
 
             <div className="status-card">
-              <div className="status-line"><span className="pulse" /> <strong>ILIAS-Verbindung bereit</strong></div>
-              <p>Der nächste Entwicklungsschritt verbindet dieses Dashboard mit dem echten Crawler.</p>
-              <code>Phase 2 · Domänenmodell</code>
-            </div>
+  <div className="status-line">
+    <span className="pulse" />
+    <strong>ILIAS-Verbindung bereit</strong>
+  </div>
+
+  <p>
+    Live-Scans werden automatisch verarbeitet und in
+    SQLite protokolliert.
+  </p>
+
+  <code>Phase 3 · Live-Synchronisierung</code>
+
+  <div className="sync-history">
+    <strong>Letzte Synchronisierungen</strong>
+
+    {syncHistory.length === 0 ? (
+      <small>Noch keine Synchronisierung gespeichert.</small>
+    ) : (
+      syncHistory.map((snapshot) => (
+        <div
+          className="sync-history-item"
+          key={snapshot.id}
+        >
+          <span>
+            {snapshot.status === 'success'
+              ? '✓'
+              : snapshot.status === 'partial'
+                ? '!'
+                : '×'}
+          </span>
+
+          <div>
+            <strong>
+              {new Date(
+                snapshot.completedAt,
+              ).toLocaleString('de-DE', {
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </strong>
+
+            <small>
+              {snapshot.discovered} gefunden ·{' '}
+              {snapshot.changed} geändert ·{' '}
+              {snapshot.removed} entfernt
+            </small>
+          </div>
+        </div>
+      ))
+    )}
+  </div>
+</div>
           </aside>
         </section>
       </main>
