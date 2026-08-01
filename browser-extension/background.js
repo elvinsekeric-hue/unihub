@@ -4,6 +4,15 @@ const ILIAS_ORIGIN =
 const BRIDGE_URL =
   'http://127.0.0.1:43127/api/ilias-scan';
 
+  const FULL_SYNC_NEXT_URL =
+  'http://127.0.0.1:43127/api/full-sync/next';
+
+const FULL_SYNC_COMPLETE_URL =
+  'http://127.0.0.1:43127/api/full-sync/complete';
+
+const MULTI_SYNC_KEY =
+  'unihubMultiCourseSync';
+
 const MAX_PAGES = 250;
 const PAGE_SETTLE_DELAY_MS = 700;
 
@@ -20,6 +29,19 @@ const EMPTY_STATE = {
   finishedAt: null,
   lastError: null
 };
+
+const EMPTY_MULTI_SYNC_STATE = {
+  running: false,
+  commandId: null,
+  tabId: null,
+  remainingUrls: [],
+  completedUrls: [],
+  startedAt: null,
+  finishedAt: null,
+  lastError: null
+};
+
+let commandPolling = false;
 
 let processing = false;
 
@@ -116,6 +138,85 @@ async function saveState(state) {
   });
 }
 
+async function loadMultiSyncState() {
+  const result =
+    await chrome.storage.local.get(
+      MULTI_SYNC_KEY
+    );
+
+  return {
+    ...EMPTY_MULTI_SYNC_STATE,
+    ...(result[MULTI_SYNC_KEY] ?? {})
+  };
+}
+
+async function saveMultiSyncState(state) {
+  await chrome.storage.local.set({
+    [MULTI_SYNC_KEY]: state
+  });
+}
+
+async function reportFullSyncCompletion(
+  commandId,
+  success,
+  errorMessage = null
+) {
+  await fetch(
+    FULL_SYNC_COMPLETE_URL,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type':
+          'application/json'
+      },
+      body: JSON.stringify({
+        commandId,
+        success,
+        errorMessage
+      })
+    }
+  );
+}
+
+async function getOrCreateIliasTab(
+  firstUrl
+) {
+  const tabs =
+    await chrome.tabs.query({
+      url:
+        'https://ilias3.uni-stuttgart.de/*'
+    });
+
+  const existingTab =
+    tabs.find((tab) => tab.id);
+
+  if (existingTab?.id) {
+    await chrome.tabs.update(
+      existingTab.id,
+      {
+        url: firstUrl,
+        active: true
+      }
+    );
+
+    return existingTab.id;
+  }
+
+  const tab =
+    await chrome.tabs.create({
+      url: firstUrl,
+      active: true
+    });
+
+  if (!tab.id) {
+    throw new Error(
+      'Der ILIAS-Tab konnte nicht geöffnet werden.'
+    );
+  }
+
+  return tab.id;
+}
+
 async function postScan(payload) {
   const response = await fetch(
     BRIDGE_URL,
@@ -177,19 +278,42 @@ function addDiscoveredFolders(
 }
 
 async function stopWithError(error) {
+  const message =
+    error instanceof Error
+      ? error.message
+      : String(error);
+
   const state = await loadState();
 
   await saveState({
     ...state,
     running: false,
     currentUrl: null,
-    lastError:
-      error instanceof Error
-        ? error.message
-        : String(error),
+    lastError: message,
     finishedAt:
       new Date().toISOString()
   });
+
+  const multiState =
+    await loadMultiSyncState();
+
+  if (multiState.running) {
+    await reportFullSyncCompletion(
+      multiState.commandId,
+      false,
+      message
+    ).catch(() => {
+      // App möglicherweise geschlossen.
+    });
+
+    await saveMultiSyncState({
+      ...multiState,
+      running: false,
+      lastError: message,
+      finishedAt:
+        new Date().toISOString()
+    });
+  }
 
   processing = false;
 }
@@ -204,6 +328,53 @@ async function finishCrawl(state) {
   });
 
   processing = false;
+
+  const multiState =
+    await loadMultiSyncState();
+
+  if (!multiState.running) {
+    return;
+  }
+
+  const completedUrls = [
+    ...multiState.completedUrls,
+    state.startUrl
+  ];
+
+  if (
+    multiState.remainingUrls.length > 0
+  ) {
+    const [
+      nextUrl,
+      ...remainingUrls
+    ] = multiState.remainingUrls;
+
+    await saveMultiSyncState({
+      ...multiState,
+      remainingUrls,
+      completedUrls
+    });
+
+    await startCrawl(
+      multiState.tabId,
+      nextUrl
+    );
+
+    return;
+  }
+
+  await reportFullSyncCompletion(
+    multiState.commandId,
+    true
+  );
+
+  await saveMultiSyncState({
+    ...multiState,
+    running: false,
+    completedUrls,
+    finishedAt:
+      new Date().toISOString()
+  });
 }
 
 async function processCurrentPage(
@@ -550,4 +721,100 @@ chrome.tabs.onUpdated.addListener(
       await stopWithError(error);
     }
   }
+);
+
+async function startMultiCourseSync(
+  command
+) {
+  const urls = [
+    ...new Set(
+      (command.courseUrls ?? [])
+        .map(canonicalizeUrl)
+        .filter(Boolean)
+    )
+  ];
+
+  if (urls.length === 0) {
+    throw new Error(
+      'Der Scan-Auftrag enthält keine gültigen Kursseiten.'
+    );
+  }
+
+  const [firstUrl, ...remainingUrls] =
+    urls;
+
+  const tabId =
+    await getOrCreateIliasTab(
+      firstUrl
+    );
+
+  await saveMultiSyncState({
+    ...EMPTY_MULTI_SYNC_STATE,
+    running: true,
+    commandId:
+      command.commandId,
+    tabId,
+    remainingUrls,
+    completedUrls: [],
+    startedAt:
+      new Date().toISOString()
+  });
+
+  await startCrawl(
+    tabId,
+    firstUrl
+  );
+}
+
+async function pollForFullSyncCommand() {
+  if (commandPolling) {
+    return;
+  }
+
+  commandPolling = true;
+
+  try {
+    const multiState =
+      await loadMultiSyncState();
+
+    if (multiState.running) {
+      return;
+    }
+
+    const response = await fetch(
+      FULL_SYNC_NEXT_URL,
+      {
+        method: 'GET',
+        cache: 'no-store'
+      }
+    );
+
+    if (!response.ok) {
+      return;
+    }
+
+    const data =
+      await response.json();
+
+    if (data.command) {
+      await startMultiCourseSync(
+        data.command
+      );
+    }
+  } catch {
+    // UniHub ist möglicherweise geschlossen.
+  } finally {
+    commandPolling = false;
+  }
+}
+
+pollForFullSyncCommand();
+
+setInterval(
+  pollForFullSyncCommand,
+  1500
+);
+
+chrome.runtime.onStartup.addListener(
+  pollForFullSyncCommand
 );

@@ -392,3 +392,55 @@ h1 { margin: 0; font-size: 30px; letter-spacing: -0.6px; }
   color: #657382;
   font-size: 12px;
 }
+
+.assignment-main-link {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.assignment-open {
+  border: 0;
+  background: transparent;
+  color: #71808e;
+  font-size: 18px;
+}
+
+.submission-section {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #f4f7f9;
+}
+
+.submission-section > strong {
+  color: #526779;
+  font-size: 12px;
+}
+
+.submission-file {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid #dfe5ea;
+  border-radius: 8px;
+  background: white;
+  color: #315a82;
+  text-align: left;
+}
+
+.submission-file:hover {
+  background: #f8fafc;
+}
+
+.submission-file span {
+  color: #71808e;
+  font-size: 11px;
+}

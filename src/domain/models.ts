@@ -60,6 +60,21 @@ export interface LearningFile {
   isRemoved: boolean;
 }
 
+export type SubmissionFileKind =
+  | 'submitted'
+  | 'feedback';
+
+export interface SubmissionFile {
+  id: EntityId;
+  assignmentId: EntityId;
+  courseId: EntityId;
+  kind: SubmissionFileKind;
+  title: string;
+  url: string;
+  mimeType?: string;
+  fileSizeBytes?: number;
+}
+
 export interface Assignment {
   id: EntityId;
   courseId: EntityId;
@@ -80,6 +95,9 @@ export interface Assignment {
     | 'graded';
   isNew: boolean;
   isRemoved?: boolean;
+
+  submissionFiles?: SubmissionFile[];
+  feedbackFiles?: SubmissionFile[];
 }
 
 export interface Announcement {

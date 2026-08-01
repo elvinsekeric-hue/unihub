@@ -10,7 +10,7 @@ use std::{
 use axum::{
     extract::State,
     http::{HeaderValue, Method, StatusCode},
-    routing::post,
+    routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -49,11 +49,30 @@ struct ScanCompletion {
     error_message: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FullSyncCommand {
+    command_id: u64,
+    course_urls: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FullSyncCompletion {
+    command_id: u64,
+    success: bool,
+    error_message: Option<String>,
+}
+
 struct BridgeState {
     scan_queue: Mutex<VecDeque<QueuedIliasScan>>,
     pending_scans:
         Mutex<HashMap<u64, oneshot::Sender<ScanCompletion>>>,
     next_scan_id: AtomicU64,
+
+    pending_full_sync: Mutex<Option<FullSyncCommand>>,
+    active_full_sync_id: Mutex<Option<u64>>,
+    next_full_sync_id: AtomicU64,
 }
 
 #[derive(Clone)]
@@ -96,6 +115,66 @@ fn complete_ilias_scan(
     }
 
     Ok(())
+}
+
+#[tauri::command]
+fn start_full_sync(
+    course_urls: Vec<String>,
+    state: tauri::State<'_, BridgeState>,
+) -> Result<u64, String> {
+    if course_urls.is_empty() {
+        return Err(
+            "Es wurden keine Kurse für die Synchronisierung angegeben."
+                .to_string(),
+        );
+    }
+
+    if course_urls.iter().any(|url| {
+        !url.starts_with(
+            "https://ilias3.uni-stuttgart.de/",
+        )
+    }) {
+        return Err(
+            "Mindestens eine ungültige ILIAS-URL wurde übergeben."
+                .to_string(),
+        );
+    }
+
+    let mut active_id = state
+        .active_full_sync_id
+        .lock()
+        .map_err(|_| {
+            "Full-Sync-State konnte nicht gesperrt werden."
+                .to_string()
+        })?;
+
+    if active_id.is_some() {
+        return Err(
+            "Eine vollständige Synchronisierung läuft bereits."
+                .to_string(),
+        );
+    }
+
+    let command_id = state
+        .next_full_sync_id
+        .fetch_add(1, Ordering::Relaxed);
+
+    let command = FullSyncCommand {
+        command_id,
+        course_urls,
+    };
+
+    *state
+        .pending_full_sync
+        .lock()
+        .map_err(|_| {
+            "Full-Sync-Auftrag konnte nicht gespeichert werden."
+                .to_string()
+        })? = Some(command);
+
+    *active_id = Some(command_id);
+
+    Ok(command_id)
 }
 
 async fn receive_scan(
@@ -218,16 +297,117 @@ async fn receive_scan(
     })))
 }
 
+async fn take_full_sync_command(
+    State(state): State<HttpState>,
+) -> Result<
+    Json<serde_json::Value>,
+    (StatusCode, String),
+> {
+    let bridge_state =
+        state.app.state::<BridgeState>();
+
+    let command = bridge_state
+        .pending_full_sync
+        .lock()
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Full-Sync-Auftrag konnte nicht gelesen werden."
+                    .to_string(),
+            )
+        })?
+        .take();
+
+    Ok(Json(serde_json::json!({
+        "command": command
+    })))
+}
+
+async fn complete_full_sync(
+    State(state): State<HttpState>,
+    Json(completion): Json<FullSyncCompletion>,
+) -> Result<
+    Json<serde_json::Value>,
+    (StatusCode, String),
+> {
+    let bridge_state =
+        state.app.state::<BridgeState>();
+
+    {
+        let mut active_id = bridge_state
+            .active_full_sync_id
+            .lock()
+            .map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Full-Sync-State konnte nicht gesperrt werden."
+                        .to_string(),
+                )
+            })?;
+
+        if *active_id != Some(completion.command_id) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Unbekannter Full-Sync-Auftrag."
+                    .to_string(),
+            ));
+        }
+
+        *active_id = None;
+    }
+
+    let event_name = if completion.success {
+        "unihub://full-sync-completed"
+    } else {
+        "unihub://full-sync-failed"
+    };
+
+    state
+        .app
+        .emit(
+            event_name,
+            serde_json::json!({
+                "commandId": completion.command_id,
+                "errorMessage": completion.error_message
+            }),
+        )
+        .map_err(|error| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error.to_string(),
+            )
+        })?;
+
+    Ok(Json(serde_json::json!({
+        "ok": true
+    })))
+}
+
 async fn start_local_bridge(app: AppHandle) {
     let cors = CorsLayer::new()
         .allow_origin(HeaderValue::from_static("*"))
-        .allow_methods([Method::POST, Method::OPTIONS])
+        .allow_methods([
+    Method::GET,
+    Method::POST,
+    Method::OPTIONS,
+])
         .allow_headers(tower_http::cors::Any);
 
     let router = Router::new()
-        .route("/api/ilias-scan", post(receive_scan))
-        .layer(cors)
-        .with_state(HttpState { app });
+    .route(
+        "/api/ilias-scan",
+        post(receive_scan),
+    )
+    .route(
+        "/api/full-sync/next",
+        get(take_full_sync_command),
+    )
+    .route(
+        "/api/full-sync/complete",
+        post(complete_full_sync),
+    )
+    .layer(cors)
+    .with_state(HttpState { app });
 
     let listener =
         match tokio::net::TcpListener::bind(BRIDGE_ADDRESS)
@@ -261,10 +441,14 @@ async fn start_local_bridge(app: AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .manage(BridgeState {
-            scan_queue: Mutex::new(VecDeque::new()),
-            pending_scans: Mutex::new(HashMap::new()),
-            next_scan_id: AtomicU64::new(1),
-        })
+    scan_queue: Mutex::new(VecDeque::new()),
+    pending_scans: Mutex::new(HashMap::new()),
+    next_scan_id: AtomicU64::new(1),
+
+    pending_full_sync: Mutex::new(None),
+    active_full_sync_id: Mutex::new(None),
+    next_full_sync_id: AtomicU64::new(1),
+})
         .plugin(
             tauri_plugin_sql::Builder::new().build(),
         )
@@ -280,7 +464,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             take_next_ilias_scan,
-            complete_ilias_scan
+            complete_ilias_scan,
+            start_full_sync
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -95,6 +95,19 @@ async function createSchema(
   `);
 
   await database.execute(`
+  CREATE TABLE IF NOT EXISTS submission_files (
+    id TEXT PRIMARY KEY NOT NULL,
+    assignment_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    url TEXT NOT NULL,
+    mime_type TEXT,
+    file_size_bytes INTEGER
+  )
+`);
+
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS sync_snapshots (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       course_id TEXT NOT NULL,
@@ -164,6 +177,16 @@ async function createSchema(
     CREATE INDEX IF NOT EXISTS idx_assignments_due
     ON assignments(due_at)
   `);
+
+await database.execute(`
+  CREATE INDEX IF NOT EXISTS idx_submission_files_assignment
+  ON submission_files(assignment_id)
+`);
+
+await database.execute(`
+  CREATE INDEX IF NOT EXISTS idx_submission_files_course
+  ON submission_files(course_id)
+`);
 
   await database.execute(`
     CREATE INDEX IF NOT EXISTS idx_sync_snapshots_source

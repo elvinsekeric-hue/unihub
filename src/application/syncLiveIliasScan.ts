@@ -5,6 +5,7 @@ import {
 import {
   loadAssignments,
   saveAssignments,
+  saveSubmissionFiles,
 } from '../infrastructure/sqlite/assignmentStore';
 import { invoke } from '@tauri-apps/api/core';
 import { compareIliasFiles } from './compareIliasFiles';
@@ -238,6 +239,14 @@ const currentScan = scan;
     }),
   );
 
+  const scannedSubmissionFiles =
+  parsed.submissionFiles.map(
+    (file) => ({
+      ...file,
+      courseId,
+    }),
+  );
+
     const pageSupportsFiles =
   isFolderPage(scan.pageUrl) ||
   isCoursePage(scan.pageUrl);
@@ -283,22 +292,36 @@ const existingAssignments =
     await saveFiles(comparison.filesToSave);
     await saveFolders(scannedFolders)
 
-    const assignmentComparison =
-  pageSupportsAssignments
+    const isAssignmentDetailPage =
+  Boolean(
+    new URL(
+      scan.pageUrl,
+    ).searchParams.get('ass_id'),
+  );
+
+const assignmentComparison =
+  pageSupportsAssignments &&
+  !isAssignmentDetailPage
     ? compareIliasAssignments(
         scannedAssignments,
         existingAssignments,
       )
     : {
-        assignmentsToSave: [],
+        assignmentsToSave:
+          scannedAssignments,
         newAssignments: [],
-        changedAssignments: [],
+        changedAssignments:
+          scannedAssignments,
         unchangedAssignments: [],
         removedAssignments: [],
       };
 
 await saveAssignments(
   assignmentComparison.assignmentsToSave,
+);
+
+await saveSubmissionFiles(
+  scannedSubmissionFiles,
 );
 
     const removedFolders = pageSupportsFiles

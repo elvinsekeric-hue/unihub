@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
@@ -120,6 +121,10 @@ const [
 
   const [query, setQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [
+  fullSyncing,
+  setFullSyncing,
+] = useState(false);
   const [loadingCourse, setLoadingCourse] =
     useState(false);
 
@@ -255,6 +260,67 @@ const [
       removeListener?.();
     };
   }, [courseView]);
+
+useEffect(() => {
+  let removeCompleted:
+    | (() => void)
+    | undefined;
+
+  let removeFailed:
+    | (() => void)
+    | undefined;
+
+  async function registerFullSyncListeners():
+  Promise<void> {
+    removeCompleted = await listen(
+      'unihub://full-sync-completed',
+      async () => {
+        setFullSyncing(false);
+
+        await Promise.all([
+          refreshDashboard(),
+          refreshSyncHistory(),
+          refreshCurrentCourse(),
+        ]);
+
+        setLastSync(
+          `Heute, ${new Date()
+            .toLocaleTimeString('de-DE', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}`,
+        );
+      },
+    );
+
+    removeFailed = await listen<{
+      errorMessage?: string;
+    }>(
+      'unihub://full-sync-failed',
+      (event) => {
+        setFullSyncing(false);
+
+        console.error(
+          'Vollständige Synchronisierung fehlgeschlagen:',
+          event.payload.errorMessage,
+        );
+      },
+    );
+  }
+
+  registerFullSyncListeners()
+    .catch((error) => {
+      console.error(
+        'Full-Sync-Listener konnten nicht gestartet werden:',
+        error,
+      );
+    });
+
+  return () => {
+    removeCompleted?.();
+    removeFailed?.();
+  };
+}, [courseView]);
 
   const visibleItems = useMemo(
     () =>
@@ -404,24 +470,55 @@ function showAssignments(): void {
   }
 
   async function syncNow(): Promise<void> {
-    setSyncing(true);
+  const courseUrls = [
+    // LDS
+    'https://ilias3.uni-stuttgart.de/' +
+      'ilias.php?baseClass=ilrepositorygui' +
+      '&cmdNode=xi:md' +
+      '&cmdClass=ilobjcoursegui' +
+      '&ref_id=4364722' +
+      '&item_ref_id=0',
 
-    await new Promise((resolve) =>
-      window.setTimeout(resolve, 600),
+    // DSA Vorlesung
+    'https://ilias3.uni-stuttgart.de/' +
+      'ilias.php?baseClass=ilrepositorygui' +
+      '&cmdNode=xi:md' +
+      '&cmdClass=ilobjcoursegui' +
+      '&ref_id=4392414' +
+      '&item_ref_id=0',
+
+    // DSA Übung
+    'https://ilias3.uni-stuttgart.de/' +
+      'ilias.php?baseClass=ilrepositorygui' +
+      '&cmdNode=xi:md' +
+      '&cmdClass=ilobjcoursegui' +
+      '&ref_id=4390617' +
+      '&item_ref_id=0',
+
+    // Mathematik
+    'https://ilias3.uni-stuttgart.de/' +
+      'ilias.php?baseClass=ilrepositorygui' +
+      '&cmdNode=xi:md' +
+      '&cmdClass=ilobjcoursegui' +
+      '&ref_id=4405757' +
+      '&item_ref_id=0',
+  ];
+
+  try {
+    setFullSyncing(true);
+
+    await invoke('start_full_sync', {
+      courseUrls,
+    });
+  } catch (error) {
+    setFullSyncing(false);
+
+    console.error(
+      'Vollständige Synchronisierung konnte nicht gestartet werden:',
+      error,
     );
-
-    setLastSync(
-      `Heute, ${new Date().toLocaleTimeString(
-        'de-DE',
-        {
-          hour: '2-digit',
-          minute: '2-digit',
-        },
-      )}`,
-    );
-
-    setSyncing(false);
   }
+}
 
   return (
 
@@ -551,11 +648,11 @@ function showAssignments(): void {
             <button
               className="primary"
               onClick={syncNow}
-              disabled={syncing}
+              disabled={syncing || fullSyncing}
             >
-              {syncing
-                ? 'Synchronisiere …'
-                : '↻ Jetzt synchronisieren'}
+              {syncing || fullSyncing
+  ? 'Synchronisiere alle Kurse …'
+  : '↻ Jetzt synchronisieren'}
             </button>
           </div>
         </header>
@@ -1083,74 +1180,150 @@ function showAssignments(): void {
           );
 
           return (
-            <button
-              className="assignment-row"
-              key={assignment.id}
-              onClick={() =>
-                safeOpen(assignment.url)
-              }
-            >
-              <span
-                className="course-badge"
-                style={{
-                  background:
-                    course?.color ??
-                    '#315a82',
-                }}
+  <article
+    className="assignment-row"
+    key={assignment.id}
+  >
+    <span
+      className="course-badge"
+      style={{
+        background:
+          course?.color ??
+          '#315a82',
+      }}
+    >
+      {course?.shortName ?? '?'}
+    </span>
+
+    <span className="assignment-body">
+      <button
+        className="assignment-main-link"
+        onClick={() =>
+          safeOpen(assignment.url)
+        }
+      >
+        <span className="assignment-title">
+          <strong>
+            {assignment.title}
+          </strong>
+
+          {assignment.isNew && (
+            <em>NEU</em>
+          )}
+        </span>
+      </button>
+
+      {assignment.description && (
+        <small>
+          {assignment.description}
+        </small>
+      )}
+
+      <span className="assignment-meta">
+        <span>
+          Status:{' '}
+          {assignment.status ===
+            'not-started' &&
+            'Nicht begonnen'}
+          {assignment.status ===
+            'in-progress' &&
+            'In Bearbeitung'}
+          {assignment.status ===
+            'submitted' &&
+            'Abgegeben'}
+          {assignment.status ===
+            'graded' &&
+            'Bewertet'}
+        </span>
+
+        {assignment.submittedAt && (
+          <span>
+            Letzte Abgabe:{' '}
+            {new Date(
+              assignment.submittedAt,
+            ).toLocaleString(
+              'de-DE',
+              {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              },
+            )}
+          </span>
+        )}
+
+        {assignment.dueAt && (
+          <span className="urgent">
+            Fällig{' '}
+            {relativeDate(
+              assignment.dueAt,
+            )}
+          </span>
+        )}
+      </span>
+
+      {(assignment.submissionFiles
+        ?.length ?? 0) > 0 && (
+        <div className="submission-section">
+          <strong>
+            Meine Abgabe
+          </strong>
+
+          {assignment.submissionFiles?.map(
+            (file) => (
+              <button
+                key={file.id}
+                className="submission-file"
+                onClick={() =>
+                  safeOpen(file.url)
+                }
               >
-                {course?.shortName ?? '?'}
-              </span>
+                📄 {file.title}
+                <span>↗</span>
+              </button>
+            ),
+          )}
+        </div>
+      )}
 
-              <span className="assignment-body">
-                <span className="assignment-title">
-                  <strong>
-                    {assignment.title}
-                  </strong>
+      {(assignment.feedbackFiles
+        ?.length ?? 0) > 0 && (
+        <div className="submission-section">
+          <strong>
+            Bewertung
+          </strong>
 
-                  {assignment.isNew && (
-                    <em>NEU</em>
-                  )}
-                </span>
+          {assignment.feedbackFiles?.map(
+            (file) => (
+              <button
+                key={file.id}
+                className="submission-file"
+                onClick={() =>
+                  safeOpen(file.url)
+                }
+              >
+                📝 {file.title}
+                <span>Download ↗</span>
+              </button>
+            ),
+          )}
+        </div>
+      )}
+    </span>
 
-                {assignment.description && (
-                  <small>
-                    {assignment.description}
-                  </small>
-                )}
-
-                <span className="assignment-meta">
-                  <span>
-                    Status:{' '}
-                    {assignment.status ===
-                      'not-started' &&
-                      'Nicht begonnen'}
-                    {assignment.status ===
-                      'in-progress' &&
-                      'In Bearbeitung'}
-                    {assignment.status ===
-                      'submitted' &&
-                      'Abgegeben'}
-                    {assignment.status ===
-                      'graded' &&
-                      'Bewertet'}
-                  </span>
-
-                  {assignment.dueAt && (
-                    <span className="urgent">
-                      Fällig{' '}
-                      {relativeDate(
-                        assignment.dueAt,
-                      )}
-                    </span>
-                  )}
-                </span>
-              </span>
-
-              <span className="chevron">
-                ↗
-              </span>
-            </button>
-          );
+    <button
+      className="assignment-open"
+      onClick={() =>
+        safeOpen(assignment.url)
+      }
+      aria-label="Abgabe in ILIAS öffnen"
+    >
+      ↗
+    </button>
+  </article>
+);
         },
       )}
 

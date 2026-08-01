@@ -159,5 +159,76 @@ if (!assignmentId) {
     });
   }
 
+const detailAssignmentId =
+  getQueryParameter(
+    pageUrl,
+    'ass_id',
+  );
+
+if (
+  detailAssignmentId &&
+  !seenIds.has(detailAssignmentId)
+) {
+  const pageText = normalizeText(
+    document.body.textContent,
+  );
+
+  const headingCandidates =
+    Array.from(
+      document.querySelectorAll<HTMLElement>(
+        'h1, h2, h3, .ilHeader, ' +
+          '.il_HeaderInner, legend',
+      ),
+    )
+      .map((element) =>
+        normalizeText(element.textContent),
+      )
+      .filter(Boolean);
+
+  const detailTitle =
+    headingCandidates.find((heading) =>
+      /^(Blatt|Aufgabe|Abgabe|Übung|Uebung)\s*\d+/i.test(
+        heading,
+      ),
+    ) ??
+    headingCandidates.find((heading) =>
+      /^Blatt\s/i.test(heading),
+    );
+
+  const submittedAt = findDate(
+    pageText,
+    'Datum der letzten Abgabe|' +
+      'Abgegeben am|' +
+      'Eingereicht am',
+  );
+
+  const hasFeedback =
+    /Bewertung/i.test(pageText) &&
+    /Download|annotated/i.test(pageText);
+
+  assignments.push({
+    id:
+      `assignment:${detailAssignmentId}`,
+    courseId,
+    iliasRefId:
+      getPageRefId(pageUrl) ??
+      detailAssignmentId,
+    iliasAssignmentId:
+      detailAssignmentId,
+    title:
+      detailTitle ??
+      `Abgabe ${detailAssignmentId}`,
+    url: pageUrl,
+    submittedAt,
+    status: hasFeedback
+      ? 'graded'
+      : submittedAt
+        ? 'submitted'
+        : 'not-started',
+    isNew: false,
+    isRemoved: false,
+  });
+}
+
   return assignments;
 }
