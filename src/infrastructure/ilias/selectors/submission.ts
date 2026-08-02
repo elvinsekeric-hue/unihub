@@ -44,6 +44,18 @@ function getMimeType(
     : undefined;
 }
 
+/*
+ * Echte Abgabe-/Bewertungsdateien haben in ILIAS immer eine
+ * Dateiendung. Platzhaltertexte wie „Sie haben noch keine
+ * Datei abgegeben." oder Fristangaben aus benachbarten Widgets
+ * haben keine – so lassen sie sich zuverlässig ausschließen.
+ */
+function looksLikeFileName(title: string): boolean {
+  return /\.(pdf|zip|docx?|pptx?|xlsx?)$/i.test(
+    title.trim(),
+  );
+}
+
 function findNearestContainer(
   element: Element,
 ): Element {
@@ -66,10 +78,16 @@ function createFile(
   const safeTitle =
     title || `${kind}-Datei-${index + 1}`;
 
+  /*
+   * Bewusst ohne Positions-Index: dieselbe Datei wird oft von
+   * mehreren Seitenansichten (Übersicht, Einreichung, Detail)
+   * erneut gefunden. Eine inhaltsbasierte ID lässt den Upsert
+   * (ON CONFLICT) sie zusammenführen statt zu duplizieren.
+   */
   return {
     id:
       `submission-file:${assignmentId}:` +
-      `${kind}:${index}:${safeTitle}`,
+      `${kind}:${safeTitle}`,
     assignmentId:
       `assignment:${assignmentId}`,
     courseId,
@@ -78,6 +96,28 @@ function createFile(
     url,
     mimeType: getMimeType(safeTitle),
   };
+}
+
+/*
+ * Manche ILIAS-Seiten (z. B. die Übungs-Übersicht) listen alle
+ * Abgaben eines Kurses gemeinsam auf. Damit ein gefundener Link
+ * nicht versehentlich einer anderen Abgabe zugeordnet wird, muss
+ * seine eigene ass_id (falls vorhanden) zur aktuell geparsten
+ * Abgabe passen.
+ */
+function belongsToAssignment(
+  url: string,
+  assignmentId: string,
+): boolean {
+  const linkAssignmentId = getQueryParameter(
+    url,
+    'ass_id',
+  );
+
+  return (
+    !linkAssignmentId ||
+    linkAssignmentId === assignmentId
+  );
 }
 
 function parseFeedbackFiles(
@@ -122,13 +162,20 @@ function parseFeedbackFiles(
 
     const url = toAbsoluteUrl(href, pageUrl);
 
-    if (!url) {
+    if (
+      !url ||
+      !belongsToAssignment(url, assignmentId)
+    ) {
       continue;
     }
 
     const title = cleanFilename(
       containerText,
     );
+
+    if (!looksLikeFileName(title)) {
+      continue;
+    }
 
     files.push(
       createFile(
@@ -183,18 +230,28 @@ function parseSubmittedFiles(
       filenameMatch?.[1] ?? '',
     );
 
-    if (!title) {
+    if (!title || !looksLikeFileName(title)) {
       continue;
     }
 
-    const url = link
-      ? toAbsoluteUrl(
-          link.getAttribute('href') ?? '',
-          pageUrl,
-        )
-      : pageUrl;
+    /*
+     * Ohne echten Download-Link ist kein tatsächliches
+     * Dateiabgabe-Element getroffen worden, sondern z. B.
+     * ein Platzhaltertext oder ein benachbartes Widget.
+     */
+    if (!link) {
+      continue;
+    }
 
-    if (!url) {
+    const url = toAbsoluteUrl(
+      link.getAttribute('href') ?? '',
+      pageUrl,
+    );
+
+    if (
+      !url ||
+      !belongsToAssignment(url, assignmentId)
+    ) {
       continue;
     }
 
@@ -250,8 +307,13 @@ export function parseSubmissionFiles(
     ...submittedFiles,
     ...feedbackFiles,
   ]) {
+    /*
+     * Ohne URL im Schlüssel, da dieselbe Datei oft von
+     * mehreren Seitenansichten (Übersicht, Einreichung,
+     * Detail) mit unterschiedlichen URLs gefunden wird.
+     */
     uniqueFiles.set(
-      `${file.kind}:${file.title}:${file.url}`,
+      `${file.kind}:${file.title}`,
       file,
     );
   }

@@ -268,4 +268,112 @@ it('ordnet Dateien der aktuell geöffneten Ordnerseite zu', () => {
     expect(result.assignments[0].totalPoints).toBe(10);
     expect(result.assignments[0].status).toBe('not-started');
   });
+
+  it('führt dieselbe abgegebene Datei aus mehreren verschachtelten Containern zusammen', () => {
+    const detailHtml = `
+      <html>
+        <body>
+          <section>
+            <tr>
+              Abgegebene Dateien
+              <a href="https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilexercisehandlergui&cmdClass=ilExSubmissionFileGUI&cmd=submissionScreen&ref_id=4435163&ass_id=131174">2. Hausübungsblatt LDS.pdf</a>
+            </tr>
+          </section>
+        </body>
+      </html>
+    `;
+
+    const result = parseIliasPage(
+      detailHtml,
+      'course:lds',
+      'https://ilias3.uni-stuttgart.de/' +
+        'ilias.php?baseClass=ilexercisehandlergui' +
+        '&cmdClass=ilAssignmentPresentationGUI' +
+        '&ref_id=4435163&ass_id=131174',
+    );
+
+    const submitted = result.submissionFiles.filter(
+      (file) => file.kind === 'submitted',
+    );
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].title).toBe(
+      '2. Hausübungsblatt LDS.pdf',
+    );
+  });
+
+  it('ignoriert Abgabe-Zeilen fremder Aufgaben aus einer Übungs-Übersicht', () => {
+    const overviewHtml = `
+      <html>
+        <body>
+          <table>
+            <tbody>
+              <tr>
+                <td>
+                  Abgegebene Dateien
+                  <a href="https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilexercisehandlergui&cmdClass=ilAssignmentPresentationGUI&ref_id=4435163&ass_id=131174&mode=all">1. Hausübungsblatt LDS.pdf</a>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  Abgegebene Dateien
+                  <a href="https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilexercisehandlergui&cmdClass=ilAssignmentPresentationGUI&ref_id=4435163&ass_id=131175&mode=past&from_overview=1">Beendet am23. Apr 2026, 15:30 AnforderungOptional</a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const result = parseIliasPage(
+      overviewHtml,
+      'course:lds',
+      'https://ilias3.uni-stuttgart.de/' +
+        'ilias.php?baseClass=ilexercisehandlergui' +
+        '&cmdClass=ilObjExerciseGUI&cmd=showOverview' +
+        '&ref_id=4435163&ass_id=131174&mode=all',
+    );
+
+    const submitted = result.submissionFiles.filter(
+      (file) => file.kind === 'submitted',
+    );
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].title).toBe(
+      '1. Hausübungsblatt LDS.pdf',
+    );
+  });
+
+  it('ignoriert Platzhaltertext und Fristangaben ohne echten Download-Link', () => {
+    const detailHtml = `
+      <html>
+        <body>
+          <section>
+            Abgegebene Dateien
+            Sie haben noch keine Datei abgegeben.
+          </section>
+          <tr>
+            Abgegebene Dateien
+            <a href="https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilexercisehandlergui&cmdClass=ilAssignmentPresentationGUI&ref_id=4435163&ass_id=131174">Beendet am23. Apr 2026, 15:30 AnforderungOptional</a>
+          </tr>
+        </body>
+      </html>
+    `;
+
+    const result = parseIliasPage(
+      detailHtml,
+      'course:lds',
+      'https://ilias3.uni-stuttgart.de/' +
+        'ilias.php?baseClass=ilexercisehandlergui' +
+        '&cmdClass=ilAssignmentPresentationGUI' +
+        '&ref_id=4435163&ass_id=131174',
+    );
+
+    const submitted = result.submissionFiles.filter(
+      (file) => file.kind === 'submitted',
+    );
+
+    expect(submitted).toHaveLength(0);
+  });
 });

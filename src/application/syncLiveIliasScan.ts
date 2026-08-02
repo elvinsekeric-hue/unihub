@@ -5,8 +5,8 @@ import {
 
 import {
   loadAssignments,
+  replaceSubmissionFilesForAssignment,
   saveAssignments,
-  saveSubmissionFiles,
 } from '../infrastructure/sqlite/assignmentStore';
 import {
   saveSubmissionEvents,
@@ -281,12 +281,13 @@ const pageSupportsAssignments =
   isAssignmentPage(scan.pageUrl) ||
   parsed.assignments.length > 0;
 
+const pageAssignmentId =
+  new URL(
+    scan.pageUrl,
+  ).searchParams.get('ass_id');
+
 const isAssignmentDetailPage =
-  Boolean(
-    new URL(
-      scan.pageUrl,
-    ).searchParams.get('ass_id'),
-  );
+  Boolean(pageAssignmentId);
 
 /*
  * Auf einer Detailseite kennen wir den Ordner der Abgabe
@@ -346,9 +347,12 @@ await saveAssignments(
   assignmentComparison.assignmentsToSave,
 );
 
-await saveSubmissionFiles(
-  scannedSubmissionFiles,
-);
+if (pageAssignmentId) {
+  await replaceSubmissionFilesForAssignment(
+    `assignment:${pageAssignmentId}`,
+    scannedSubmissionFiles,
+  );
+}
 
 await saveSubmissionEvents(
   assignmentComparison.submissionEvents,

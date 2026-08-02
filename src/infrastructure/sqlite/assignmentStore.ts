@@ -262,6 +262,30 @@ export async function saveSubmissionFiles(
   }
 }
 
+/*
+ * Eine Aufgaben-Detailseite liefert immer den vollständigen
+ * aktuellen Zustand ihrer Abgabedateien. Deshalb werden hier
+ * alle bisher gespeicherten Einträge dieser einen Aufgabe
+ * ersetzt, statt nur neue hinzuzufügen – so verschwinden auch
+ * veraltete oder fälschlich zugeordnete Einträge von selbst.
+ */
+export async function replaceSubmissionFilesForAssignment(
+  assignmentId: string,
+  files: SubmissionFile[],
+): Promise<void> {
+  const database = await getDatabase();
+
+  await database.execute(
+    `
+      DELETE FROM submission_files
+      WHERE assignment_id = $1
+    `,
+    [assignmentId],
+  );
+
+  await saveSubmissionFiles(files);
+}
+
 async function loadSubmissionFiles(
   courseId?: string,
 ): Promise<SubmissionFile[]> {
