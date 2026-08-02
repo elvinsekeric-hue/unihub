@@ -447,6 +447,32 @@ it('ordnet Dateien der aktuell geöffneten Ordnerseite zu', () => {
     );
   });
 
+  it('überschreibt den Abgabetitel nicht mit dem "Bereits abgegebene Dateien"-Link', () => {
+    const detailHtml = `
+      <html>
+        <body>
+          <h1>Abgabe Blatt 04</h1>
+          <a href="https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilexercisehandlergui&cmdNode=cs:mw:53:ci:ch&cmdClass=ilExSubmissionFileGUI&cmd=submissionScreen&ref_id=4462026&ass_id=136898&mode=past">Bereits abgegebene Dateien</a>
+          <a href="https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilexercisehandlergui&cmdNode=cs:mw:53&cmdClass=ilAssignmentPresentationGUI&ref_id=4462026&mode=past&from_overview=1&ass_id=136898">Abgabe Blatt 04</a>
+        </body>
+      </html>
+    `;
+
+    const result = parseIliasPage(
+      detailHtml,
+      'course:mathe',
+      'https://ilias3.uni-stuttgart.de/' +
+        'ilias.php?baseClass=ilexercisehandlergui' +
+        '&cmdClass=ilAssignmentPresentationGUI' +
+        '&ref_id=4462026&ass_id=136898',
+    );
+
+    expect(result.assignments).toHaveLength(1);
+    expect(result.assignments[0].title).toBe(
+      'Abgabe Blatt 04',
+    );
+  });
+
   it('trennt mehrere abgegebene Dateien in derselben Zeile (Team-Abgabe)', () => {
     const detailHtml = `
       <html>

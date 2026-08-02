@@ -200,6 +200,15 @@ export function parseAssignments(
       continue;
     }
 
+    /*
+     * Links wie „» Bereits abgegebene Dateien" führen (außerhalb
+     * der Reiterleiste) ebenfalls nur zur Einreichungsansicht
+     * (ilExSubmissionFileGUI) und sind nie die Abgabe selbst.
+     */
+    if (/ilexsubmissionfilegui/i.test(url)) {
+      continue;
+    }
+
     if (!title || !url) {
       continue;
     }
