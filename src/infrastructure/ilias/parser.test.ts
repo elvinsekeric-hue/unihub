@@ -376,4 +376,33 @@ it('ordnet Dateien der aktuell geöffneten Ordnerseite zu', () => {
 
     expect(submitted).toHaveLength(0);
   });
+
+  it('überschreibt den Abgabetitel nicht mit dem "Zurück zur Übersicht"-Link', () => {
+    const detailHtml = `
+      <html>
+        <body>
+          <a href="https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilexercisehandlergui&cmdNode=cs:mw&cmdClass=ilObjExerciseGUI&cmd=showOverview&ref_id=4435163&ass_id=131174&mode=past">Liste der Übungseinheiten</a>
+          <h1>Abgabe Blatt 01</h1>
+          <a href="https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilexercisehandlergui&cmdNode=cs:mw:53&cmdClass=ilAssignmentPresentationGUI&ref_id=4435163&mode=all&from_overview=1&ass_id=131174">Abgabe Blatt 01</a>
+        </body>
+      </html>
+    `;
+
+    const result = parseIliasPage(
+      detailHtml,
+      'course:lds',
+      'https://ilias3.uni-stuttgart.de/' +
+        'ilias.php?baseClass=ilexercisehandlergui' +
+        '&cmdClass=ilAssignmentPresentationGUI' +
+        '&ref_id=4435163&ass_id=131174',
+    );
+
+    expect(result.assignments).toHaveLength(1);
+    expect(result.assignments[0].title).toBe(
+      'Abgabe Blatt 01',
+    );
+    expect(
+      result.assignments[0].url,
+    ).not.toContain('showOverview');
+  });
 });

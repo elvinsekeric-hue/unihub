@@ -172,7 +172,9 @@ export function parseAssignments(
       anchor.textContent,
     );
     if (
-  title.toLocaleLowerCase("de-DE") === "abgabeordner"
+  title.toLocaleLowerCase("de-DE") === "abgabeordner" ||
+  title.toLocaleLowerCase("de-DE") ===
+    "liste der übungseinheiten"
 ) {
   continue;
 }
@@ -181,6 +183,17 @@ export function parseAssignments(
       anchor.getAttribute('href') ?? '',
       pageUrl,
     );
+
+    /*
+     * „Zurück zur Übersicht"-Links auf der Übungs-Detailseite
+     * tragen dieselbe ass_id wie die aktuell betrachtete Abgabe,
+     * verlinken aber auf die Listenansicht (cmd=showOverview)
+     * statt die Abgabe selbst – sie dürfen die echte Abgabe
+     * nicht mit einem irreführenden Titel überschreiben.
+     */
+    if (/cmd=showoverview/i.test(url)) {
+      continue;
+    }
 
     if (!title || !url) {
       continue;
