@@ -6,6 +6,7 @@ import type {
   Folder,
   LearningFile,
   Semester,
+  SubmissionEvent,
   SyncSnapshot,
 } from '../../domain/models';
 
@@ -34,6 +35,10 @@ import {
 import {
   loadFolders,
 } from './folderStore';
+
+import {
+  loadSubmissionEvents,
+} from './submissionEventStore';
 
 const LDS_COURSE_ID = 'course:lds';
 
@@ -134,6 +139,12 @@ export class SQLiteUniHubRepository
     note: string,
   ): Promise<void> {
     await updateNote(assignmentId, note);
+  }
+
+  async getSubmissionEvents(
+    assignmentId: EntityId,
+  ): Promise<SubmissionEvent[]> {
+    return loadSubmissionEvents(assignmentId);
   }
 
   async getActivity():

@@ -6,6 +6,7 @@ import type {
   Folder,
   LearningFile,
   Semester,
+  SubmissionEvent,
   SyncSnapshot,
 } from '../../domain/models';
 import type { UniHubRepository } from '../../domain/repositories';
@@ -90,6 +91,14 @@ export class FixtureUniHubRepository implements UniHubRepository {
     await mockRepository.updateAssignmentNote(
       assignmentId,
       note,
+    );
+  }
+
+  async getSubmissionEvents(
+    assignmentId: EntityId,
+  ): Promise<SubmissionEvent[]> {
+    return mockRepository.getSubmissionEvents(
+      assignmentId,
     );
   }
 

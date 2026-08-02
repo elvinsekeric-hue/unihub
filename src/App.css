@@ -563,3 +563,20 @@ h1 { margin: 0; font-size: 30px; letter-spacing: -0.6px; }
   color: #71808e;
   font-size: 11px;
 }
+
+.submission-history {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.submission-history li {
+  padding: 6px 10px;
+  border: 1px solid #dfe5ea;
+  border-radius: 8px;
+  background: white;
+  color: #526779;
+  font-size: 12px;
+}

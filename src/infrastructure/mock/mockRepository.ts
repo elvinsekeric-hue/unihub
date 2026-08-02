@@ -6,6 +6,7 @@ import type {
   Folder,
   LearningFile,
   Semester,
+  SubmissionEvent,
   SyncSnapshot,
 } from '../../domain/models';
 import type { UniHubRepository } from '../../domain/repositories';
@@ -160,6 +161,13 @@ export class MockUniHubRepository implements UniHubRepository {
     note: string,
   ): Promise<void> {
     this.notes.set(assignmentId, note);
+  }
+
+  async getSubmissionEvents(
+    _assignmentId: EntityId,
+  ): Promise<SubmissionEvent[]> {
+    // Mock-Daten enthalten keine Abgabehistorie.
+    return [];
   }
 
   async getActivity(): Promise<ActivityItem[]> {

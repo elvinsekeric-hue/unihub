@@ -6,6 +6,7 @@ import type {
   Folder,
   LearningFile,
   Semester,
+  SubmissionEvent,
   SyncSnapshot,
 } from './models';
 
@@ -19,6 +20,9 @@ export interface UniHubRepository {
     assignmentId: string,
     note: string,
   ): Promise<void>;
+  getSubmissionEvents(
+    assignmentId: EntityId,
+  ): Promise<SubmissionEvent[]>;
   getActivity(): Promise<ActivityItem[]>;
   saveSyncSnapshot(snapshot: SyncSnapshot): Promise<void>;
 }

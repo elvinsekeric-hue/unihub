@@ -31,6 +31,7 @@ import type {
   Assignment,
   Course,
   Folder,
+  SubmissionEvent,
 } from './domain/models';
 import type {
   StoredSyncSnapshot,
@@ -136,6 +137,33 @@ function formatPointsValue(
       });
 }
 
+function formatSubmissionEvent(
+  event: SubmissionEvent,
+): string {
+  const date = new Date(
+    event.occurredAt,
+  ).toLocaleString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  if (event.kind === 'graded') {
+    return (
+      `${date} · Bewertet: ` +
+      `${formatPointsValue(
+        event.achievedPoints ?? 0,
+      )} / ${formatPointsValue(
+        event.totalPoints ?? 0,
+      )} Punkte`
+    );
+  }
+
+  return `${date} · Abgabe eingereicht`;
+}
+
 export default function App() {
   const [
     dashboard,
@@ -178,6 +206,18 @@ const [
     noteDrafts,
     setNoteDrafts,
   ] = useState<Record<string, string>>({});
+
+  const [
+    submissionHistory,
+    setSubmissionHistory,
+  ] = useState<
+    Record<string, SubmissionEvent[]>
+  >({});
+
+  const [
+    expandedHistoryIds,
+    setExpandedHistoryIds,
+  ] = useState<Set<string>>(new Set());
 
   const [syncing, setSyncing] = useState(false);
   const [
@@ -226,6 +266,36 @@ const [
           }
         : previous,
     );
+  }
+
+  async function toggleSubmissionHistory(
+    assignmentId: string,
+  ): Promise<void> {
+    setExpandedHistoryIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(assignmentId)) {
+        next.delete(assignmentId);
+      } else {
+        next.add(assignmentId);
+      }
+
+      return next;
+    });
+
+    if (submissionHistory[assignmentId]) {
+      return;
+    }
+
+    const events =
+      await appRepository.getSubmissionEvents(
+        assignmentId,
+      );
+
+    setSubmissionHistory((current) => ({
+      ...current,
+      [assignmentId]: events,
+    }));
   }
 
   async function refreshSyncHistory(): Promise<void> {
@@ -556,27 +626,16 @@ const visibleAssignments = useMemo(
   ],
 );
 
-  if (!dashboard) {
-    return (
-      <div className="app-loading">
-        UniHub wird geladen …
-      </div>
-    );
-  }
-
-  const {
-    courses,
-    activity: items,
-    assignments,
-    semester,
-  } = dashboard;
-
   /*
    * Pro Modul eine Punkte-Zusammenfassung, für die
    * aktuelle Kursfilter-Auswahl (oder alle Module
-   * bei „Alle Kurse").
+   * bei „Alle Kurse"). Muss vor dem frühen Return unten
+   * stehen, sonst ändert sich die Hook-Reihenfolge
+   * zwischen Lade- und geladenem Zustand.
    */
   const pointSummaries = useMemo(() => {
+    const courses = dashboard?.courses ?? [];
+
     if (selectedCourse !== 'all') {
       const course = courses.find(
         (entry) => entry.id === selectedCourse,
@@ -608,9 +667,24 @@ const visibleAssignments = useMemo(
       );
   }, [
     selectedCourse,
-    courses,
+    dashboard,
     pointsByCourse,
   ]);
+
+  if (!dashboard) {
+    return (
+      <div className="app-loading">
+        UniHub wird geladen …
+      </div>
+    );
+  }
+
+  const {
+    courses,
+    activity: items,
+    assignments,
+    semester,
+  } = dashboard;
 
   function showDashboard(): void {
     setView('dashboard');
@@ -1545,6 +1619,52 @@ function showAssignments(): void {
           )}
         </div>
       )}
+
+      <div className="submission-section">
+        <button
+          className="secondary-button"
+          onClick={() =>
+            toggleSubmissionHistory(
+              assignment.id,
+            )
+          }
+        >
+          {expandedHistoryIds.has(
+            assignment.id,
+          )
+            ? 'Verlauf ausblenden'
+            : 'Verlauf anzeigen'}
+        </button>
+
+        {expandedHistoryIds.has(
+          assignment.id,
+        ) && (
+          <ul className="submission-history">
+            {(
+              submissionHistory[
+                assignment.id
+              ] ?? []
+            ).map((event, index) => (
+              <li
+                key={`${assignment.id}-${index}`}
+              >
+                {formatSubmissionEvent(
+                  event,
+                )}
+              </li>
+            ))}
+
+            {submissionHistory[
+              assignment.id
+            ]?.length === 0 && (
+              <li>
+                Noch kein Verlauf
+                aufgezeichnet.
+              </li>
+            )}
+          </ul>
+        )}
+      </div>
     </span>
 
     <button
