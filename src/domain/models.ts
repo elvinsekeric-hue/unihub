@@ -108,6 +108,24 @@ export interface Assignment {
   feedbackFiles?: SubmissionFile[];
 }
 
+export type SubmissionEventKind =
+  | 'submitted'
+  | 'graded';
+
+/**
+ * Lokal abgeleiteter Verlaufseintrag: entsteht, wenn ein Sync eine
+ * neue Abgabe oder neue/geänderte Punkte erkennt. ILIAS selbst liefert
+ * keine Abgabehistorie über mehrere Versuche.
+ */
+export interface SubmissionEvent {
+  assignmentId: EntityId;
+  courseId: EntityId;
+  kind: SubmissionEventKind;
+  occurredAt: IsoDateTime;
+  achievedPoints?: number;
+  totalPoints?: number;
+}
+
 export interface Announcement {
   id: EntityId;
   courseId: EntityId;

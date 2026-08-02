@@ -134,6 +134,23 @@ async function createSchema(
 `);
 
   await database.execute(`
+    CREATE TABLE IF NOT EXISTS submission_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      assignment_id TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      occurred_at TEXT NOT NULL,
+      achieved_points REAL,
+      total_points REAL
+    )
+  `);
+
+  await database.execute(`
+    CREATE INDEX IF NOT EXISTS idx_submission_events_assignment
+    ON submission_events(assignment_id)
+  `);
+
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS sync_snapshots (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       course_id TEXT NOT NULL,
