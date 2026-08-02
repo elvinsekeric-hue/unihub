@@ -15,6 +15,10 @@ export interface UniHubRepository {
   getFolders(courseId?: EntityId): Promise<Folder[]>;
   getFiles(courseId?: EntityId): Promise<LearningFile[]>;
   getAssignments(courseId?: EntityId): Promise<Assignment[]>;
+  updateAssignmentNote(
+    assignmentId: string,
+    note: string,
+  ): Promise<void>;
   getActivity(): Promise<ActivityItem[]>;
   saveSyncSnapshot(snapshot: SyncSnapshot): Promise<void>;
 }

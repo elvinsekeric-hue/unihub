@@ -129,6 +129,8 @@ const activity: ActivityItem[] = [
 ];
 
 export class MockUniHubRepository implements UniHubRepository {
+  private readonly notes = new Map<string, string>();
+
   async getActiveSemester(): Promise<Semester> {
     return structuredClone(semester);
   }
@@ -146,7 +148,18 @@ export class MockUniHubRepository implements UniHubRepository {
   }
 
   async getAssignments(courseId?: EntityId): Promise<Assignment[]> {
-    return structuredClone(courseId ? assignments.filter((item) => item.courseId === courseId) : assignments);
+    const list = courseId ? assignments.filter((item) => item.courseId === courseId) : assignments;
+    return structuredClone(list).map((item) => ({
+      ...item,
+      userNote: this.notes.get(item.id),
+    }));
+  }
+
+  async updateAssignmentNote(
+    assignmentId: string,
+    note: string,
+  ): Promise<void> {
+    this.notes.set(assignmentId, note);
   }
 
   async getActivity(): Promise<ActivityItem[]> {

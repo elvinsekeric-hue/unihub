@@ -9,9 +9,14 @@ function normalizeText(value) {
 
 function canonicalizeUrl(value) {
   try {
+    /*
+     * ILIAS-Links wie „ilias.php?baseClass=..." sind immer
+     * root-relativ. Gegen die Wurzel auflösen, damit sie
+     * auch auf Pretty-URL-Seiten (/go/exc/…) korrekt bleiben.
+     */
     const url = new URL(
       value,
-      window.location.href
+      `${ILIAS_ORIGIN}/`
     );
 
     if (url.origin !== ILIAS_ORIGIN) {
@@ -35,18 +40,43 @@ function getCrawlUrls() {
       'a[href*="ilExerciseHandlerGUI"], ' +
       'a[href*="ilAssignmentPresentationGUI"], ' +
       'a[href*="ilObjExerciseGUI"], ' +
-      'a[href*="ass_id="]'
+      'a[href*="ass_id="], ' +
+      'a[href*="/go/exc/"]'
     )
   );
 
-  const urls = anchors
-    .filter((anchor) => {
-      const href = (
-        anchor.getAttribute('href') ?? ''
-      ).toLocaleLowerCase('de-DE');
+  /*
+   * Die Ansichts-Umschalter „Laufende/Kommende/Vergangene/
+   * Alle" auf Übungsseiten sind Buttons mit data-action und
+   * keine Links. Ohne sie erreicht der Crawler die
+   * vergangenen Abgaben nie.
+   */
+  const modeButtons = Array.from(
+    document.querySelectorAll(
+      'button[data-action*="ilObjExerciseGUI"], ' +
+      'button[data-action*="ilexercisehandlergui"]'
+    )
+  );
+
+  const entries = [
+    ...anchors.map((anchor) => ({
+      url: anchor.getAttribute('href') ?? '',
+      text: anchor.textContent
+    })),
+    ...modeButtons.map((button) => ({
+      url: button.getAttribute('data-action') ?? '',
+      text: button.textContent
+    }))
+  ];
+
+  const urls = entries
+    .filter(({ url, text }) => {
+      const href = url.toLocaleLowerCase(
+        'de-DE'
+      );
 
       const title = normalizeText(
-        anchor.textContent
+        text
       ).toLocaleLowerCase('de-DE');
 
       /*
@@ -73,7 +103,8 @@ function getCrawlUrls() {
           'ilassignmentpresentationgui'
         ) ||
         href.includes('ilobjexercisegui') ||
-        href.includes('ass_id=');
+        href.includes('ass_id=') ||
+        href.includes('/go/exc/');
 
       /*
        * Rückfall nur für das eigentliche
@@ -91,10 +122,8 @@ function getCrawlUrls() {
         isAssignmentContainer
       );
     })
-    .map((anchor) =>
-      canonicalizeUrl(
-        anchor.getAttribute('href') ?? ''
-      )
+    .map(({ url }) =>
+      canonicalizeUrl(url)
     )
     .filter(Boolean);
 

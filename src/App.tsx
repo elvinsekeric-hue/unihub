@@ -22,6 +22,9 @@ import {
 import {
   importLatestIliasScan,
 } from './application/syncLiveIliasScan';
+import {
+  buildFullSyncStartUrls,
+} from './application/courseRegistry';
 
 import type {
   ActivityItem,
@@ -83,6 +86,56 @@ function sameParent(
   return folder.parentFolderId === parentFolderId;
 }
 
+function getDeadlineHint(
+  assignment: Assignment,
+):
+  | { text: string; tone: 'ok' | 'warn' | 'overdue' }
+  | undefined {
+  if (
+    assignment.status === 'submitted' ||
+    assignment.status === 'graded' ||
+    !assignment.dueAt
+  ) {
+    return undefined;
+  }
+
+  const diffDays =
+    (new Date(assignment.dueAt).getTime() -
+      Date.now()) /
+    86_400_000;
+
+  if (diffDays < 0) {
+    return {
+      text: '⏰ Frist abgelaufen',
+      tone: 'overdue',
+    };
+  }
+
+  if (diffDays <= 7) {
+    return {
+      text: `⏰ Noch ${Math.ceil(diffDays)} ${
+        Math.ceil(diffDays) === 1 ? 'Tag' : 'Tage'
+      } bis zur Frist`,
+      tone: 'warn',
+    };
+  }
+
+  return {
+    text: `📅 Frist in ${Math.ceil(diffDays)} Tagen`,
+    tone: 'ok',
+  };
+}
+
+function formatPointsValue(
+  value: number,
+): string {
+  return Number.isInteger(value)
+    ? String(value)
+    : value.toLocaleString('de-DE', {
+        maximumFractionDigits: 1,
+      });
+}
+
 export default function App() {
   const [
     dashboard,
@@ -120,6 +173,12 @@ const [
 ] = useState<string | undefined>();
 
   const [query, setQuery] = useState('');
+
+  const [
+    noteDrafts,
+    setNoteDrafts,
+  ] = useState<Record<string, string>>({});
+
   const [syncing, setSyncing] = useState(false);
   const [
   fullSyncing,
@@ -135,6 +194,38 @@ const [
   async function refreshDashboard(): Promise<void> {
     const data = await loadDashboard(appRepository);
     setDashboard(data);
+  }
+
+  async function saveNote(
+    assignment: Assignment,
+  ): Promise<void> {
+    const note = (
+      noteDrafts[assignment.id] ?? ''
+    ).trim();
+
+    await appRepository.updateAssignmentNote(
+      assignment.id,
+      note,
+    );
+
+    setDashboard((previous) =>
+      previous
+        ? {
+            ...previous,
+            assignments:
+              previous.assignments.map(
+                (entry) =>
+                  entry.id ===
+                  assignment.id
+                    ? {
+                        ...entry,
+                        userNote: note,
+                      }
+                    : entry,
+              ),
+          }
+        : previous,
+    );
   }
 
   async function refreshSyncHistory(): Promise<void> {
@@ -300,6 +391,12 @@ useEffect(() => {
       (event) => {
         setFullSyncing(false);
 
+        const message =
+          event.payload.errorMessage ??
+          'Die Synchronisierung fehlgeschlagen.';
+
+        setLastSync(`Fehler: ${message}`);
+
         console.error(
           'Vollständige Synchronisierung fehlgeschlagen:',
           event.payload.errorMessage,
@@ -374,6 +471,36 @@ useEffect(() => {
         : !file.folderId
     ) ?? [];
 
+  /*
+   * Punktezusammenfassung: erreichte/maximale Punkte
+   * aller Abgaben pro Modul.
+   */
+  const pointsByCourse = useMemo(() => {
+    const result = new Map<
+      string,
+      { achieved: number; total: number }
+    >();
+
+    for (const assignment of
+      dashboard?.assignments ?? []) {
+      if (assignment.totalPoints === undefined) {
+        continue;
+      }
+
+      const entry =
+        result.get(assignment.courseId) ??
+        { achieved: 0, total: 0 };
+
+      entry.total += assignment.totalPoints;
+      entry.achieved +=
+        assignment.achievedPoints ?? 0;
+
+      result.set(assignment.courseId, entry);
+    }
+
+    return result;
+  }, [dashboard]);
+
 const visibleAssignments = useMemo(
   () =>
     (dashboard?.assignments ?? [])
@@ -444,6 +571,47 @@ const visibleAssignments = useMemo(
     semester,
   } = dashboard;
 
+  /*
+   * Pro Modul eine Punkte-Zusammenfassung, für die
+   * aktuelle Kursfilter-Auswahl (oder alle Module
+   * bei „Alle Kurse").
+   */
+  const pointSummaries = useMemo(() => {
+    if (selectedCourse !== 'all') {
+      const course = courses.find(
+        (entry) => entry.id === selectedCourse,
+      );
+
+      const points =
+        pointsByCourse.get(selectedCourse);
+
+      return course && points
+        ? [{ course, points }]
+        : [];
+    }
+
+    return courses
+      .map((course) => ({
+        course,
+        points: pointsByCourse.get(course.id),
+      }))
+      .filter(
+        (
+          entry,
+        ): entry is {
+          course: Course;
+          points: {
+            achieved: number;
+            total: number;
+          };
+        } => entry.points !== undefined,
+      );
+  }, [
+    selectedCourse,
+    courses,
+    pointsByCourse,
+  ]);
+
   function showDashboard(): void {
     setView('dashboard');
     setActiveFolderId(undefined);
@@ -470,55 +638,21 @@ function showAssignments(): void {
   }
 
   async function syncNow(): Promise<void> {
-  const courseUrls = [
-    // LDS
-    'https://ilias3.uni-stuttgart.de/' +
-      'ilias.php?baseClass=ilrepositorygui' +
-      '&cmdNode=xi:md' +
-      '&cmdClass=ilobjcoursegui' +
-      '&ref_id=4364722' +
-      '&item_ref_id=0',
+    try {
+      setFullSyncing(true);
 
-    // DSA Vorlesung
-    'https://ilias3.uni-stuttgart.de/' +
-      'ilias.php?baseClass=ilrepositorygui' +
-      '&cmdNode=xi:md' +
-      '&cmdClass=ilobjcoursegui' +
-      '&ref_id=4392414' +
-      '&item_ref_id=0',
+      await invoke('start_full_sync', {
+        courseUrls: buildFullSyncStartUrls(),
+      });
+    } catch (error) {
+      setFullSyncing(false);
 
-    // DSA Übung
-    'https://ilias3.uni-stuttgart.de/' +
-      'ilias.php?baseClass=ilrepositorygui' +
-      '&cmdNode=xi:md' +
-      '&cmdClass=ilobjcoursegui' +
-      '&ref_id=4390617' +
-      '&item_ref_id=0',
-
-    // Mathematik
-    'https://ilias3.uni-stuttgart.de/' +
-      'ilias.php?baseClass=ilrepositorygui' +
-      '&cmdNode=xi:md' +
-      '&cmdClass=ilobjcoursegui' +
-      '&ref_id=4405757' +
-      '&item_ref_id=0',
-  ];
-
-  try {
-    setFullSyncing(true);
-
-    await invoke('start_full_sync', {
-      courseUrls,
-    });
-  } catch (error) {
-    setFullSyncing(false);
-
-    console.error(
-      'Vollständige Synchronisierung konnte nicht gestartet werden:',
-      error,
-    );
+      console.error(
+        'Vollständige Synchronisierung konnte nicht gestartet werden:',
+        error,
+      );
+    }
   }
-}
 
   return (
 
@@ -1119,6 +1253,42 @@ function showAssignments(): void {
         )}
         {view === 'assignments' && (
   <section className="assignments-page">
+    {pointSummaries.length > 0 && (
+      <div className="points-summary">
+        {pointSummaries.map(
+          ({ course, points }) => (
+            <article
+              className="points-card"
+              key={course.id}
+            >
+              <span
+                className="course-badge"
+                style={{
+                  background:
+                    course.color ?? '#315a82',
+                }}
+              >
+                {course.shortName ?? '?'}
+              </span>
+
+              <span className="points-body">
+                <strong>Punkte</strong>
+                <em>
+                  {formatPointsValue(
+                    points.achieved,
+                  )}{' '}
+                  /{' '}
+                  {formatPointsValue(
+                    points.total,
+                  )}
+                </em>
+              </span>
+            </article>
+          ),
+        )}
+      </div>
+    )}
+
     <div className="assignment-filters">
       <select
         value={selectedCourse}
@@ -1179,6 +1349,9 @@ function showAssignments(): void {
               assignment.courseId,
           );
 
+          const deadlineHint =
+            getDeadlineHint(assignment);
+
           return (
   <article
     className="assignment-row"
@@ -1236,6 +1409,23 @@ function showAssignments(): void {
             'Bewertet'}
         </span>
 
+        {assignment.totalPoints !==
+          undefined && (
+          <span className="points-badge">
+            Punkte:{' '}
+            {assignment.achievedPoints !==
+            undefined
+              ? formatPointsValue(
+                  assignment.achievedPoints,
+                )
+              : '0'}{' '}
+            /{' '}
+            {formatPointsValue(
+              assignment.totalPoints,
+            )}
+          </span>
+        )}
+
         {assignment.submittedAt && (
           <span>
             Letzte Abgabe:{' '}
@@ -1263,6 +1453,50 @@ function showAssignments(): void {
           </span>
         )}
       </span>
+
+      <div className="assignment-hint">
+        <strong>Abgabe-Hinweis</strong>
+
+        {deadlineHint && (
+          <span
+            className={`deadline-hint ${deadlineHint.tone}`}
+          >
+            {deadlineHint.text}
+          </span>
+        )}
+
+        {assignment.submissionHint && (
+          <blockquote className="ilias-hint">
+            {assignment.submissionHint}
+          </blockquote>
+        )}
+
+        <textarea
+          className="note-input"
+          placeholder="Eigene Notiz …"
+          value={
+            noteDrafts[assignment.id] ??
+            assignment.userNote ??
+            ''
+          }
+          onChange={(event) =>
+            setNoteDrafts((drafts) => ({
+              ...drafts,
+              [assignment.id]:
+                event.target.value,
+            }))
+          }
+        />
+
+        <button
+          className="note-save"
+          onClick={() =>
+            saveNote(assignment)
+          }
+        >
+          Notiz speichern
+        </button>
+      </div>
 
       {(assignment.submissionFiles
         ?.length ?? 0) > 0 && (

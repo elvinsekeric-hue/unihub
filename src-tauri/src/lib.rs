@@ -4,7 +4,7 @@ use std::{
         atomic::{AtomicU64, Ordering},
         Mutex,
     },
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
@@ -20,6 +20,27 @@ use tower_http::cors::CorsLayer;
 
 const BRIDGE_ADDRESS: &str = "127.0.0.1:43127";
 const SCAN_TIMEOUT_SECONDS: u64 = 45;
+
+/*
+ * Wenn die Browser-Extension den Auftrag in dieser Zeit
+ * nicht abholt, gilt er als nicht angenommen (sie schläft
+ * oder ist nicht installiert).
+ */
+const FULL_SYNC_COMMAND_TAKEN_TIMEOUT_SECONDS: u64 = 90;
+
+/*
+ * Gesamte Lebensdauer eines Full-Sync-Auftrags. Läuft der
+ * Crawl nicht innerhalb dieser Zeit ab, wird er verworfen,
+ * damit „Jetzt synchronisieren" nicht hängen bleibt.
+ */
+const FULL_SYNC_TTL_SECONDS: u64 = 600;
+
+fn now_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -72,6 +93,7 @@ struct BridgeState {
 
     pending_full_sync: Mutex<Option<FullSyncCommand>>,
     active_full_sync_id: Mutex<Option<u64>>,
+    active_full_sync_started_at: Mutex<Option<u64>>,
     next_full_sync_id: AtomicU64,
 }
 
@@ -120,6 +142,7 @@ fn complete_ilias_scan(
 #[tauri::command]
 fn start_full_sync(
     course_urls: Vec<String>,
+    app: tauri::AppHandle,
     state: tauri::State<'_, BridgeState>,
 ) -> Result<u64, String> {
     if course_urls.is_empty() {
@@ -148,6 +171,39 @@ fn start_full_sync(
                 .to_string()
         })?;
 
+    let mut active_started_at = state
+        .active_full_sync_started_at
+        .lock()
+        .map_err(|_| {
+            "Full-Sync-State konnte nicht gesperrt werden."
+                .to_string()
+        })?;
+
+    /*
+     * Ein hängengebliebener Auftrag aus einer früheren
+     * Sitzung darf „Jetzt synchronisieren" nicht dauerhaft
+     * blockieren. Nach Ablauf des TTL wird er verworfen.
+     */
+    let started_at = now_seconds();
+
+    if active_started_at
+        .is_some_and(|created| {
+            started_at.saturating_sub(created)
+                >= FULL_SYNC_TTL_SECONDS
+        })
+    {
+        *state
+            .pending_full_sync
+            .lock()
+            .map_err(|_| {
+                "Full-Sync-State konnte nicht gesperrt werden."
+                    .to_string()
+            })? = None;
+
+        *active_id = None;
+        *active_started_at = None;
+    }
+
     if active_id.is_some() {
         return Err(
             "Eine vollständige Synchronisierung läuft bereits."
@@ -173,6 +229,117 @@ fn start_full_sync(
         })? = Some(command);
 
     *active_id = Some(command_id);
+    *active_started_at = Some(started_at);
+
+    /*
+     * Watchdog: Er meldet sich, wenn der Auftrag nie von
+     * der Extension abgeholt wird (sie schläft) oder der
+     * Crawl nicht abschließt. So bekommt die App sichtbares
+     * Feedback statt eines dauerhaft gesperrten Knopfs.
+     */
+    let watchdog_app = app.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let bridge = watchdog_app
+            .state::<BridgeState>();
+
+        tokio::time::sleep(Duration::from_secs(
+            FULL_SYNC_COMMAND_TAKEN_TIMEOUT_SECONDS,
+        ))
+        .await;
+
+        let never_taken = {
+            let Ok(mut pending) =
+                bridge.pending_full_sync.lock()
+            else {
+                return;
+            };
+
+            let Ok(mut active) =
+                bridge.active_full_sync_id.lock()
+            else {
+                return;
+            };
+
+            let Ok(mut active_started) =
+                bridge
+                    .active_full_sync_started_at
+                    .lock()
+            else {
+                return;
+            };
+
+            if *active == Some(command_id)
+                && pending
+                    .as_ref()
+                    .map(|item| item.command_id)
+                    == Some(command_id)
+            {
+                *pending = None;
+                *active = None;
+                *active_started = None;
+
+                true
+            } else {
+                false
+            }
+        };
+
+        if never_taken {
+            let _ = watchdog_app.emit(
+                "unihub://full-sync-failed",
+                serde_json::json!({
+                    "commandId": command_id,
+                    "errorMessage":
+                        "Die Browser-Extension hat den Auftrag nicht angenommen. Läuft die UniHub-Erweiterung?"
+                }),
+            );
+
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_secs(
+            FULL_SYNC_TTL_SECONDS
+                - FULL_SYNC_COMMAND_TAKEN_TIMEOUT_SECONDS,
+        ))
+        .await;
+
+        let still_active = {
+            let Ok(mut active) =
+                bridge.active_full_sync_id.lock()
+            else {
+                return;
+            };
+
+            let Ok(mut active_started) =
+                bridge
+                    .active_full_sync_started_at
+                    .lock()
+            else {
+                return;
+            };
+
+            if *active == Some(command_id) {
+                *active = None;
+                *active_started = None;
+
+                true
+            } else {
+                false
+            }
+        };
+
+        if still_active {
+            let _ = watchdog_app.emit(
+                "unihub://full-sync-failed",
+                serde_json::json!({
+                    "commandId": command_id,
+                    "errorMessage":
+                        "Die Synchronisierung wurde nicht abgeschlossen. Bitte erneut versuchen."
+                }),
+            );
+        }
+    });
 
     Ok(command_id)
 }
@@ -354,6 +521,19 @@ async fn complete_full_sync(
         }
 
         *active_id = None;
+
+        let mut active_started_at = bridge_state
+            .active_full_sync_started_at
+            .lock()
+            .map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Full-Sync-State konnte nicht gesperrt werden."
+                        .to_string(),
+                )
+            })?;
+
+        *active_started_at = None;
     }
 
     let event_name = if completion.success {
@@ -447,6 +627,7 @@ pub fn run() {
 
     pending_full_sync: Mutex::new(None),
     active_full_sync_id: Mutex::new(None),
+    active_full_sync_started_at: Mutex::new(None),
     next_full_sync_id: AtomicU64::new(1),
 })
         .plugin(

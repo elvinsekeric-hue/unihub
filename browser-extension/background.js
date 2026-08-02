@@ -45,6 +45,29 @@ let commandPolling = false;
 
 let processing = false;
 
+const FULL_SYNC_POLL_ALARM =
+  'unihub-full-sync-poll';
+
+async function ensurePollAlarm() {
+  try {
+    const existing =
+      await chrome.alarms.get(
+        FULL_SYNC_POLL_ALARM
+      );
+
+    if (existing) {
+      return;
+    }
+
+    await chrome.alarms.create(
+      FULL_SYNC_POLL_ALARM,
+      { periodInMinutes: 1 }
+    );
+  } catch {
+    // Alarms nicht verfügbar – nur das Intervall-Polling bleibt.
+  }
+}
+
 chrome.runtime.onInstalled.addListener(
   async () => {
     console.log(
@@ -59,6 +82,8 @@ chrome.runtime.onInstalled.addListener(
     if (!stored.unihubCrawlState) {
       await saveState(EMPTY_STATE);
     }
+
+    await ensurePollAlarm();
   }
 );
 
@@ -99,11 +124,40 @@ function getIliasRefId(value) {
   }
 }
 
+function getQueryParam(value, name) {
+  try {
+    return new URL(value).searchParams.get(name);
+  } catch {
+    return null;
+  }
+}
+
 function isSameIliasPage(left, right) {
   const leftRefId = getIliasRefId(left);
   const rightRefId = getIliasRefId(right);
 
   if (leftRefId && rightRefId) {
+    /*
+     * Unterschiedliche Ansichten derselben Übung
+     * (Laufende/Kommende/Vergangene/Alle) sind
+     * verschiedene Seiten – ebenso verschiedene
+     * Abgaben (ass_id). Sonst würde der Crawler
+     * mode=past und die Blatt-Detailseiten
+     * überspringen.
+     */
+    const leftMode = getQueryParam(left, 'mode');
+    const rightMode = getQueryParam(right, 'mode');
+    const leftAssId = getQueryParam(left, 'ass_id');
+    const rightAssId = getQueryParam(right, 'ass_id');
+
+    if (leftMode !== rightMode) {
+      return false;
+    }
+
+    if (leftAssId !== rightAssId) {
+      return false;
+    }
+
     return leftRefId === rightRefId;
   }
 
@@ -766,6 +820,123 @@ async function startMultiCourseSync(
   );
 }
 
+async function recoverStaleMultiSync() {
+  const multiState =
+    await loadMultiSyncState();
+
+  if (!multiState.running) {
+    return false;
+  }
+
+  const crawlState = await loadState();
+
+  /*
+   * Kein aktiver Crawl mehr: Der Multi-Sync wurde
+   * unterbrochen (z. B. UniHub geschlossen). Zustand
+   * zurücksetzen, damit neue Aufträge angenommen werden.
+   */
+  if (!crawlState.running) {
+    await reportFullSyncCompletion(
+      multiState.commandId,
+      false,
+      'Die Synchronisierung wurde unterbrochen.'
+    ).catch(() => {
+      // App möglicherweise geschlossen.
+    });
+
+    await saveMultiSyncState(
+      EMPTY_MULTI_SYNC_STATE
+    );
+
+    return 'cleaned';
+  }
+
+  /*
+   * Der Crawl-State lebt noch. Der Service-Worker kann
+   * mitten im Crawl eingeschlafen sein – dann den
+   * laufenden Scan fortsetzen statt etwas Neues zu starten.
+   */
+  if (multiState.tabId) {
+    try {
+      const tab =
+        await chrome.tabs.get(
+          multiState.tabId
+        );
+
+      if (
+        tab.url?.startsWith(
+          ILIAS_ORIGIN
+        )
+      ) {
+        if (
+          crawlState.currentUrl &&
+          tab.url &&
+          isSameIliasPage(
+            tab.url,
+            crawlState.currentUrl
+          )
+        ) {
+          /*
+           * Der Tab zeigt bereits die zu scannende Seite –
+           * der Scan wurde nur durch den schlafenden Worker
+           * unterbrochen. Direkt fortsetzen.
+           */
+          await processCurrentPage(
+            multiState.tabId
+          );
+        } else if (
+          crawlState.currentUrl
+        ) {
+          /*
+           * Der Tab steht auf einer anderen Seite.
+           * Zurück zu currentUrl navigieren – der
+           * onUpdated-Listener setzt den Scan fort.
+           */
+          await chrome.tabs.update(
+            multiState.tabId,
+            {
+              url:
+                crawlState.currentUrl,
+              active: true
+            }
+          );
+        } else {
+          await processNextPage();
+        }
+
+        return 'resumed';
+      }
+    } catch {
+      // Tab existiert nicht mehr.
+    }
+  }
+
+  /*
+   * Der Tab wurde geschlossen – der Crawl ist tot.
+   */
+  await saveState({
+    ...crawlState,
+    running: false,
+    currentUrl: null,
+    finishedAt:
+      new Date().toISOString()
+  });
+
+  await reportFullSyncCompletion(
+    multiState.commandId,
+    false,
+    'Der ILIAS-Tab wurde geschlossen.'
+  ).catch(() => {
+    // App möglicherweise geschlossen.
+  });
+
+  await saveMultiSyncState(
+    EMPTY_MULTI_SYNC_STATE
+  );
+
+  return 'cleaned';
+}
+
 async function pollForFullSyncCommand() {
   if (commandPolling) {
     return;
@@ -774,10 +945,14 @@ async function pollForFullSyncCommand() {
   commandPolling = true;
 
   try {
-    const multiState =
-      await loadMultiSyncState();
+    const recovery =
+      await recoverStaleMultiSync();
 
-    if (multiState.running) {
+    /*
+     * Ein fortgesetzter Crawl übernimmt die Kontrolle –
+     * es darf kein neuer Auftrag parallel starten.
+     */
+    if (recovery === 'resumed') {
       return;
     }
 
@@ -815,6 +990,20 @@ setInterval(
   1500
 );
 
+chrome.alarms.onAlarm.addListener(
+  (alarm) => {
+    if (
+      alarm.name ===
+      FULL_SYNC_POLL_ALARM
+    ) {
+      pollForFullSyncCommand();
+    }
+  }
+);
+
 chrome.runtime.onStartup.addListener(
-  pollForFullSyncCommand
+  async () => {
+    await ensurePollAlarm();
+    pollForFullSyncCommand();
+  }
 );

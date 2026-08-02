@@ -14,17 +14,34 @@ function hasChanged(
   incoming: Assignment,
   existing: Assignment,
 ): boolean {
+  /*
+   * Punkte nur werten, wenn die neue Seite sie enthält –
+   * Übersichtsseiten liefern keine Punkte und dürfen
+   * bewertete Abgaben nicht jedes Mal als „geändert"
+   * markieren.
+   */
+  const pointsChanged =
+    incoming.achievedPoints !== undefined &&
+    incoming.totalPoints !== undefined &&
+    (incoming.achievedPoints !==
+      existing.achievedPoints ||
+      incoming.totalPoints !==
+      existing.totalPoints);
+
   return (
     incoming.title !== existing.title ||
     incoming.url !== existing.url ||
     incoming.description !==
       existing.description ||
+    incoming.submissionHint !==
+      existing.submissionHint ||
     incoming.startsAt !==
       existing.startsAt ||
     incoming.dueAt !== existing.dueAt ||
     incoming.submittedAt !==
       existing.submittedAt ||
     incoming.status !== existing.status ||
+    pointsChanged ||
     existing.isRemoved === true
   );
 }
@@ -72,6 +89,7 @@ export function compareIliasAssignments(
     if (hasChanged(incoming, existing)) {
       const changedAssignment = {
         ...incoming,
+        userNote: existing.userNote,
         isNew: existing.isNew,
         isRemoved: false,
       };

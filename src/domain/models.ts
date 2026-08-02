@@ -85,6 +85,14 @@ export interface Assignment {
   title: string;
   url: string;
   description?: string;
+  /** Hinweis/Bedingungen zur Abgabe, vom Dozenten in ILIAS hinterlegt. */
+  submissionHint?: string;
+  /** Eigene Notiz des Nutzers zur Abgabe (lokal gespeichert). */
+  userNote?: string;
+  /** Erreichte Punktzahl, sobald bewertet. */
+  achievedPoints?: number;
+  /** Maximale Punktzahl der Abgabe. */
+  totalPoints?: number;
   startsAt?: IsoDateTime;
   dueAt?: IsoDateTime;
   submittedAt?: IsoDateTime;

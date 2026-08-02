@@ -18,6 +18,10 @@ interface AssignmentRow {
   title: string;
   url: string;
   description: string | null;
+  submission_hint: string | null;
+  user_note: string | null;
+  achieved_points: number | null;
+  total_points: number | null;
   starts_at: string | null;
   due_at: string | null;
   submitted_at: string | null;
@@ -74,6 +78,14 @@ function mapRow(
     url: row.url,
     description:
       row.description ?? undefined,
+    submissionHint:
+      row.submission_hint ?? undefined,
+    userNote:
+      row.user_note ?? undefined,
+    achievedPoints:
+      row.achieved_points ?? undefined,
+    totalPoints:
+      row.total_points ?? undefined,
     startsAt:
       row.starts_at ?? undefined,
     dueAt:
@@ -115,6 +127,9 @@ export async function saveAssignments(
           title,
           url,
           description,
+          submission_hint,
+          achieved_points,
+          total_points,
           starts_at,
           due_at,
           submitted_at,
@@ -125,7 +140,8 @@ export async function saveAssignments(
         VALUES (
           $1, $2, $3, $4, $5,
           $6, $7, $8, $9, $10,
-          $11, $12, $13, $14, $15
+          $11, $12, $13, $14, $15,
+          $16, $17, $18
         )
         ON CONFLICT(id) DO UPDATE SET
           course_id =
@@ -142,6 +158,18 @@ export async function saveAssignments(
           url = excluded.url,
           description =
             excluded.description,
+          submission_hint =
+            excluded.submission_hint,
+          achieved_points =
+            COALESCE(
+              excluded.achieved_points,
+              assignments.achieved_points
+            ),
+          total_points =
+            COALESCE(
+              excluded.total_points,
+              assignments.total_points
+            ),
           starts_at =
             excluded.starts_at,
           due_at = excluded.due_at,
@@ -171,6 +199,9 @@ export async function saveAssignments(
         assignment.title,
         assignment.url,
         assignment.description ?? null,
+        assignment.submissionHint ?? null,
+        assignment.achievedPoints ?? null,
+        assignment.totalPoints ?? null,
         assignment.startsAt ?? null,
         assignment.dueAt ?? null,
         assignment.submittedAt ?? null,
@@ -345,5 +376,21 @@ export async function loadAssignments(
           file.assignmentId === row.id,
       ),
     ),
+  );
+}
+
+export async function updateAssignmentNote(
+  assignmentId: string,
+  note: string,
+): Promise<void> {
+  const database = await getDatabase();
+
+  await database.execute(
+    `
+      UPDATE assignments
+      SET user_note = $2
+      WHERE id = $1
+    `,
+    [assignmentId, note],
   );
 }

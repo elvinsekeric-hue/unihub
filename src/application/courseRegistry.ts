@@ -12,6 +12,12 @@ export interface RegisteredScanSource {
   shortName: string;
   iliasRefIds: string[];
   titleKeywords: string[];
+
+  /*
+   * Bestimmt, mit welcher ILIAS-Ansicht ein automatischer
+   * Full-Sync diese Quelle startet (Kurs- oder Ordner-GUI).
+   */
+  kind: 'course' | 'folder';
 }
 
 export interface ResolvedScanSource {
@@ -26,6 +32,7 @@ export const courseRegistry: RegisteredScanSource[] = [
     courseTitle: 'Logik und Diskrete Strukturen',
     sourceTitle: 'LDS Hauptkurs',
     shortName: 'LDS',
+    kind: 'course',
     iliasRefIds: ['4364722'],
     titleKeywords: [
       'logik und diskrete strukturen',
@@ -37,6 +44,7 @@ export const courseRegistry: RegisteredScanSource[] = [
     courseTitle: 'Logik und Diskrete Strukturen',
     sourceTitle: 'LDS Tutorium',
     shortName: 'LDS Tutorium',
+    kind: 'folder',
     iliasRefIds: ['4364743'],
     titleKeywords: [
       'tutoriumsblätter',
@@ -48,6 +56,7 @@ export const courseRegistry: RegisteredScanSource[] = [
     courseTitle: 'Datenstrukturen und Algorithmen',
     sourceTitle: 'DSA Vorlesung',
     shortName: 'DSA Vorlesung',
+    kind: 'course',
     iliasRefIds: ['4392414'],
     titleKeywords: [
       'datenstrukturen und algorithmen vorlesung',
@@ -59,6 +68,7 @@ export const courseRegistry: RegisteredScanSource[] = [
     courseTitle: 'Datenstrukturen und Algorithmen',
     sourceTitle: 'DSA Übung',
     shortName: 'DSA Übung',
+    kind: 'course',
     iliasRefIds: ['4390617'],
     titleKeywords: [
       'datenstrukturen und algorithmen übung',
@@ -71,6 +81,7 @@ export const courseRegistry: RegisteredScanSource[] = [
     courseTitle: 'Mathematik',
     sourceTitle: 'Mathematik Hauptkurs',
     shortName: 'MATHE',
+    kind: 'course',
     iliasRefIds: ['4405757'],
     titleKeywords: [
       'mathematik',
@@ -190,4 +201,53 @@ export function resolveCourseId(
   scan: CourseScanData,
 ): string {
   return resolveScanSource(scan).courseId;
+}
+
+function buildSourceUrl(
+  refId: string,
+  kind: RegisteredScanSource['kind'],
+): string {
+  if (kind === 'folder') {
+    return (
+      'https://ilias3.uni-stuttgart.de/' +
+      'ilias.php?baseClass=ilrepositorygui' +
+      '&cmdClass=ilObjFolderGUI' +
+      `&ref_id=${refId}`
+    );
+  }
+
+  return (
+    'https://ilias3.uni-stuttgart.de/' +
+    'ilias.php?baseClass=ilrepositorygui' +
+    '&cmdNode=xi:md' +
+    '&cmdClass=ilobjcoursegui' +
+    `&ref_id=${refId}` +
+    '&item_ref_id=0'
+  );
+}
+
+/*
+ * Startseiten für den automatischen Full-Sync aller Kurse.
+ *
+ * Die courseRegistry ist die Single Source of Truth für
+ * Scan-Sources. So werden auch neu hinzugefügte Quellen
+ * (z. B. zusätzliche Tutorien) automatisch synchronisiert,
+ * ohne die App anfassen zu müssen.
+ */
+export function buildFullSyncStartUrls(): string[] {
+  const seenRefIds = new Set<string>();
+  const urls: string[] = [];
+
+  for (const source of courseRegistry) {
+    for (const refId of source.iliasRefIds) {
+      if (seenRefIds.has(refId)) {
+        continue;
+      }
+
+      seenRefIds.add(refId);
+      urls.push(buildSourceUrl(refId, source.kind));
+    }
+  }
+
+  return urls;
 }

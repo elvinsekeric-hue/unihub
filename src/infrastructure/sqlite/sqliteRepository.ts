@@ -21,6 +21,7 @@ import { mockRepository } from '../mock/mockRepository';
 
 import {
   loadAssignments,
+  updateAssignmentNote as updateNote,
 } from './assignmentStore';
 
 import {
@@ -126,6 +127,13 @@ export class SQLiteUniHubRepository
     courseId?: EntityId,
   ): Promise<Assignment[]> {
     return loadAssignments(courseId);
+  }
+
+  async updateAssignmentNote(
+    assignmentId: string,
+    note: string,
+  ): Promise<void> {
+    await updateNote(assignmentId, note);
   }
 
   async getActivity():

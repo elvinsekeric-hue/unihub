@@ -85,6 +85,8 @@ async function createSchema(
       title TEXT NOT NULL,
       url TEXT NOT NULL,
       description TEXT,
+      submission_hint TEXT,
+      user_note TEXT,
       starts_at TEXT,
       due_at TEXT,
       submitted_at TEXT,
@@ -93,6 +95,30 @@ async function createSchema(
       is_removed INTEGER NOT NULL DEFAULT 0
     )
   `);
+
+  await addColumn(
+    database,
+    'assignments',
+    'submission_hint TEXT',
+  );
+
+  await addColumn(
+    database,
+    'assignments',
+    'user_note TEXT',
+  );
+
+  await addColumn(
+    database,
+    'assignments',
+    'achieved_points REAL',
+  );
+
+  await addColumn(
+    database,
+    'assignments',
+    'total_points REAL',
+  );
 
   await database.execute(`
   CREATE TABLE IF NOT EXISTS submission_files (

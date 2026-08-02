@@ -83,6 +83,16 @@ export class FixtureUniHubRepository implements UniHubRepository {
     return mockRepository.getAssignments(courseId);
   }
 
+  async updateAssignmentNote(
+    assignmentId: string,
+    note: string,
+  ): Promise<void> {
+    await mockRepository.updateAssignmentNote(
+      assignmentId,
+      note,
+    );
+  }
+
   async getActivity(): Promise<ActivityItem[]> {
     const existingActivity = await mockRepository.getActivity();
 

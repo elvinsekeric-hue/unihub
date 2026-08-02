@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildFullSyncStartUrls,
   resolveScanSource,
   type CourseScanData,
 } from './courseRegistry';
@@ -117,5 +118,68 @@ describe('resolveScanSource', () => {
         }),
       ),
     ).toThrow('keiner bekannten Scan-Quelle');
+  });
+});
+
+describe('buildFullSyncStartUrls', () => {
+  it('liefert eine Start-URL für jede Scan-Quelle', () => {
+    const urls = buildFullSyncStartUrls();
+
+    expect(urls).toHaveLength(5);
+  });
+
+  it('deckt alle registrierten refIds ab', () => {
+    const urls = buildFullSyncStartUrls();
+
+    for (const refId of [
+      '4364722',
+      '4364743',
+      '4392414',
+      '4390617',
+      '4405757',
+    ]) {
+      expect(
+        urls.some((url) =>
+          url.includes(`ref_id=${refId}`),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('verwendet für Ordner die ilObjFolderGUI', () => {
+    const urls = buildFullSyncStartUrls();
+
+    const tutoriumUrl = urls.find((url) =>
+      url.includes('ref_id=4364743'),
+    );
+
+    expect(tutoriumUrl).toContain(
+      'cmdClass=ilObjFolderGUI',
+    );
+  });
+
+  it('verwendet für Kurse die ilobjcoursegui', () => {
+    const urls = buildFullSyncStartUrls();
+
+    const courseUrls = urls.filter(
+      (url) =>
+        !url.includes('ref_id=4364743'),
+    );
+
+    expect(courseUrls).toHaveLength(4);
+
+    for (const url of courseUrls) {
+      expect(url).toContain(
+        'cmdClass=ilobjcoursegui',
+      );
+    }
+  });
+
+  it('enthält keine Duplikate', () => {
+    const urls = buildFullSyncStartUrls();
+
+    expect(new Set(urls).size).toBe(
+      urls.length,
+    );
   });
 });

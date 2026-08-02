@@ -156,4 +156,116 @@ it('ordnet Dateien der aktuell geöffneten Ordnerseite zu', () => {
 
     expect(new Set(refIds).size).toBe(13);
   });
+
+  it('extrahiert den Abgabe-Hinweis von einer Übungs-Detailseite', () => {
+    const detailHtml = `
+      <html>
+        <body>
+          <h1>Abgabe Blatt 13</h1>
+          <div class="ilBoxInfo">
+            Abgabebedingungen: Abgabe als einzelne PDF-Datei
+            bis zum Ende der Übungszeit.
+          </div>
+        </body>
+      </html>
+    `;
+
+    const result = parseIliasPage(
+      detailHtml,
+      'course:lds',
+      'https://ilias3.uni-stuttgart.de/' +
+        'ilias.php?baseClass=ilexercisehandlergui' +
+        '&cmdClass=ilAssignmentPresentationGUI' +
+        '&ref_id=4435163&ass_id=138187',
+    );
+
+    expect(result.assignments).toHaveLength(1);
+    expect(result.assignments[0].submissionHint).toContain(
+      'Abgabebedingungen',
+    );
+  });
+
+  it('extrahiert den Abgabe-Hinweis ohne Hinweis-Box', () => {
+    const detailHtml = `
+      <html>
+        <body>
+          <h1>Abgabe Blatt 14</h1>
+          <p>
+            Abgabebedingungen: Lösung bitte per ILIAS
+            hochladen. Danach keine Änderungen mehr möglich.
+          </p>
+        </body>
+      </html>
+    `;
+
+    const result = parseIliasPage(
+      detailHtml,
+      'course:lds',
+      'https://ilias3.uni-stuttgart.de/' +
+        'ilias.php?baseClass=ilexercisehandlergui' +
+        '&cmdClass=ilAssignmentPresentationGUI' +
+        '&ref_id=4435164&ass_id=138188',
+    );
+
+    expect(result.assignments).toHaveLength(1);
+    expect(
+      result.assignments[0].submissionHint,
+    ).toContain(
+      'Lösung bitte per ILIAS hochladen',
+    );
+  });
+
+  it('extrahiert Punkte von einer bewerteten Abgabe', () => {
+    const detailHtml = `
+      <html>
+        <body>
+          <h1>Abgabe Blatt 05</h1>
+          <div>
+            Erreichte Punkte: 8 von 10 Punkten
+          </div>
+        </body>
+      </html>
+    `;
+
+    const result = parseIliasPage(
+      detailHtml,
+      'course:lds',
+      'https://ilias3.uni-stuttgart.de/' +
+        'ilias.php?baseClass=ilexercisehandlergui' +
+        '&cmdClass=ilAssignmentPresentationGUI' +
+        '&ref_id=4435163&ass_id=138185',
+    );
+
+    expect(result.assignments[0].achievedPoints).toBe(8);
+    expect(result.assignments[0].totalPoints).toBe(10);
+    expect(result.assignments[0].status).toBe('graded');
+  });
+
+  it('kennt die maximale Punktzahl unbewerteter Abgaben', () => {
+    const detailHtml = `
+      <html>
+        <body>
+          <h1>Abgabe Blatt 06</h1>
+          <div>
+            Maximale Punkte: 10
+          </div>
+        </body>
+      </html>
+    `;
+
+    const result = parseIliasPage(
+      detailHtml,
+      'course:lds',
+      'https://ilias3.uni-stuttgart.de/' +
+        'ilias.php?baseClass=ilexercisehandlergui' +
+        '&cmdClass=ilAssignmentPresentationGUI' +
+        '&ref_id=4435163&ass_id=138186',
+    );
+
+    expect(
+      result.assignments[0].achievedPoints,
+    ).toBeUndefined();
+    expect(result.assignments[0].totalPoints).toBe(10);
+    expect(result.assignments[0].status).toBe('not-started');
+  });
 });

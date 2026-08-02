@@ -58,6 +58,92 @@ function resolveStatus(
   return 'not-started';
 }
 
+function extractHintFromText(
+  text: string,
+): string | undefined {
+  const match = text.match(
+    /(?:Abgabebedingungen|Hinweis(?:se)?\s+zur\s+Abgabe|Bitte\s+beachten)\s*[:\-–]?\s*([\s\S]{10,500}?)(?=(?:\.\s+[A-ZÄÖÜ0-9])|$)/i,
+  );
+
+  if (!match) {
+    return undefined;
+  }
+
+  const hint = normalizeText(match[1]);
+
+  return hint.length >= 10 ? hint : undefined;
+}
+
+function extractSubmissionHint(
+  document: Document,
+  pageText: string,
+): string | undefined {
+  const boxes = Array.from(
+    document.querySelectorAll<HTMLElement>(
+      '.ilBoxInfo, .ilInfoBox, .alert-info, ' +
+        '.il_Alert, .alert-warning',
+    ),
+  )
+    .map((element) =>
+      normalizeText(element.textContent),
+    )
+    .filter(
+      (text) => text.length >= 10,
+    );
+
+  if (boxes.length > 0) {
+    return boxes.join(' ');
+  }
+
+  return extractHintFromText(pageText);
+}
+
+function toNumber(value: string): number {
+  return Number(value.replace(',', '.'));
+}
+
+function extractPoints(
+  text: string,
+): { achieved?: number; total?: number } {
+  const normalized = text.replace(/\s+/g, ' ');
+
+  /*
+   * „Erreichte Punkte: 8 von 10", „Punkte: 8/10"
+   * oder „8 von 10 Punkten".
+   */
+  const achievedTotal =
+    normalized.match(
+      /(?:erreichte\s+punkte?|punkte(?:zahl)?)\s*[:.]?\s*(\d+(?:[.,]\d+)?)\s*(?:von|\/)\s*(\d+(?:[.,]\d+)?)(?:\s*punkte?)?/i,
+    ) ??
+    normalized.match(
+      /(\d+(?:[.,]\d+)?)\s*(?:von|\/)\s*(\d+(?:[.,]\d+)?)\s*punkten?/i,
+    );
+
+  if (achievedTotal) {
+    return {
+      achieved: toNumber(achievedTotal[1]),
+      total: toNumber(achievedTotal[2]),
+    };
+  }
+
+  /*
+   * Nur die maximale Punktzahl bekannt,
+   * z. B. „Maximale Punkte: 10". Ohne erreichte
+   * Punkte ist die Abgabe noch nicht bewertet.
+   */
+  const maxPoints = normalized.match(
+    /(?:max(?:imale)?\s+punkte?)\s*[:.]?\s*(\d+(?:[.,]\d+)?)/i,
+  );
+
+  if (maxPoints) {
+    return {
+      total: toNumber(maxPoints[1]),
+    };
+  }
+
+  return {};
+}
+
 export function parseAssignments(
   document: Document,
   courseId: string,
@@ -126,6 +212,8 @@ if (!assignmentId) {
       container.textContent,
     );
 
+    const points = extractPoints(context);
+
     assignments.push({
       id: `assignment:${uniqueId}`,
       courseId,
@@ -141,6 +229,10 @@ if (!assignmentId) {
         context !== title
           ? context
           : undefined,
+      submissionHint:
+        extractHintFromText(context),
+      achievedPoints: points.achieved,
+      totalPoints: points.total,
       startsAt: findDate(
         context,
         'Beginn|Start|Freigabe|Verfügbar ab',
@@ -206,6 +298,12 @@ if (
     /Bewertung/i.test(pageText) &&
     /Download|annotated/i.test(pageText);
 
+  const points = extractPoints(pageText);
+
+  const hasPoints =
+    points.total !== undefined &&
+    points.achieved !== undefined;
+
   assignments.push({
     id:
       `assignment:${detailAssignmentId}`,
@@ -220,7 +318,14 @@ if (
       `Abgabe ${detailAssignmentId}`,
     url: pageUrl,
     submittedAt,
-    status: hasFeedback
+    submissionHint:
+      extractSubmissionHint(
+        document,
+        pageText,
+      ),
+    achievedPoints: points.achieved,
+    totalPoints: points.total,
+    status: hasFeedback || hasPoints
       ? 'graded'
       : submittedAt
         ? 'submitted'

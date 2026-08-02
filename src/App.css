@@ -393,6 +393,44 @@ h1 { margin: 0; font-size: 30px; letter-spacing: -0.6px; }
   font-size: 12px;
 }
 
+.points-summary {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.points-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid #dfe5ea;
+  border-radius: 14px;
+  background: white;
+}
+
+.points-body {
+  display: grid;
+  gap: 2px;
+}
+
+.points-body strong {
+  color: #526779;
+  font-size: 12px;
+}
+
+.points-body em {
+  color: #1c3f5c;
+  font-size: 20px;
+  font-weight: 800;
+  font-style: normal;
+}
+
+.points-badge {
+  color: #1c3f5c;
+  font-weight: 700;
+}
+
 .assignment-main-link {
   width: fit-content;
   padding: 0;
@@ -421,6 +459,87 @@ h1 { margin: 0; font-size: 30px; letter-spacing: -0.6px; }
 .submission-section > strong {
   color: #526779;
   font-size: 12px;
+}
+
+.assignment-hint {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #f4f7f9;
+}
+
+.assignment-hint > strong {
+  color: #526779;
+  font-size: 12px;
+}
+
+.deadline-hint {
+  width: fit-content;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.deadline-hint.overdue {
+  background: #fbeae8;
+  color: #ad3d35;
+}
+
+.deadline-hint.warn {
+  background: #fdf3e0;
+  color: #9a6b1f;
+}
+
+.deadline-hint.ok {
+  background: #e7f3ec;
+  color: #2f7d59;
+}
+
+.ilias-hint {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 3px solid #cadde9;
+  background: white;
+  color: #526779;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.note-input {
+  width: 100%;
+  min-height: 54px;
+  padding: 8px 10px;
+  border: 1px solid #dfe5ea;
+  border-radius: 8px;
+  background: white;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.note-input:focus {
+  outline: 2px solid #315a82;
+  outline-offset: 0;
+}
+
+.note-save {
+  width: fit-content;
+  padding: 6px 12px;
+  border: 1px solid #cadde9;
+  border-radius: 8px;
+  background: white;
+  color: #315a82;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.note-save:hover {
+  background: #e9f2f8;
 }
 
 .submission-file {

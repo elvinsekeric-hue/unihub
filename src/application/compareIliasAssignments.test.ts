@@ -87,4 +87,51 @@ describe('compareIliasAssignments', () => {
         .isRemoved,
     ).toBe(true);
   });
+
+  it('erkennt geänderte Abgabe-Hinweise', () => {
+    const result =
+      compareIliasAssignments(
+        [
+          assignment({
+            submissionHint:
+              'Als PDF abgeben',
+          }),
+        ],
+        [
+          assignment({
+            submissionHint:
+              'Als ZIP abgeben',
+          }),
+        ],
+      );
+
+    expect(
+      result.changedAssignments,
+    ).toHaveLength(1);
+  });
+
+  it('behält die Nutzernotiz bei geänderten Abgaben', () => {
+    const result =
+      compareIliasAssignments(
+        [
+          assignment({
+            dueAt:
+              '2026-08-10T12:00:00.000Z',
+          }),
+        ],
+        [
+          assignment({
+            dueAt:
+              '2026-08-08T12:00:00.000Z',
+            userNote:
+              'Noch Tutorium abwarten',
+          }),
+        ],
+      );
+
+    expect(
+      result.changedAssignments[0]
+        .userNote,
+    ).toBe('Noch Tutorium abwarten');
+  });
 });

@@ -6,7 +6,8 @@
   "permissions": [
     "activeTab",
     "tabs",
-    "storage"
+    "storage",
+    "alarms"
   ],
   "host_permissions": [
     "https://ilias3.uni-stuttgart.de/*",
