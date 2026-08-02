@@ -314,6 +314,7 @@ const assignmentComparison =
           scannedAssignments,
         unchangedAssignments: [],
         removedAssignments: [],
+        submissionEvents: [],
       };
 
 await saveAssignments(

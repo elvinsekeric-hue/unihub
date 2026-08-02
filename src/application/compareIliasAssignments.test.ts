@@ -110,6 +110,109 @@ describe('compareIliasAssignments', () => {
     ).toHaveLength(1);
   });
 
+  it('erzeugt ein submitted-Event bei einer neuen Abgabe', () => {
+    const result =
+      compareIliasAssignments(
+        [
+          assignment({
+            submittedAt:
+              '2026-08-01T10:00:00.000Z',
+            status: 'submitted',
+          }),
+        ],
+        [assignment()],
+      );
+
+    expect(
+      result.submissionEvents,
+    ).toEqual([
+      {
+        assignmentId: 'assignment:1',
+        courseId: 'course:lds',
+        kind: 'submitted',
+        occurredAt:
+          '2026-08-01T10:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('erzeugt kein submitted-Event, wenn sich submittedAt nicht ändert', () => {
+    const result =
+      compareIliasAssignments(
+        [
+          assignment({
+            submittedAt:
+              '2026-08-01T10:00:00.000Z',
+            dueAt:
+              '2026-08-10T12:00:00.000Z',
+          }),
+        ],
+        [
+          assignment({
+            submittedAt:
+              '2026-08-01T10:00:00.000Z',
+          }),
+        ],
+      );
+
+    expect(
+      result.submissionEvents,
+    ).toHaveLength(0);
+  });
+
+  it('erzeugt ein graded-Event bei neuen Punkten', () => {
+    const result =
+      compareIliasAssignments(
+        [
+          assignment({
+            achievedPoints: 8,
+            totalPoints: 10,
+            status: 'graded',
+          }),
+        ],
+        [assignment()],
+        '2026-08-05T09:00:00.000Z',
+      );
+
+    expect(
+      result.submissionEvents,
+    ).toEqual([
+      {
+        assignmentId: 'assignment:1',
+        courseId: 'course:lds',
+        kind: 'graded',
+        occurredAt:
+          '2026-08-05T09:00:00.000Z',
+        achievedPoints: 8,
+        totalPoints: 10,
+      },
+    ]);
+  });
+
+  it('erzeugt kein graded-Event, wenn sich die Punkte nicht ändern', () => {
+    const result =
+      compareIliasAssignments(
+        [
+          assignment({
+            achievedPoints: 8,
+            totalPoints: 10,
+            dueAt:
+              '2026-08-10T12:00:00.000Z',
+          }),
+        ],
+        [
+          assignment({
+            achievedPoints: 8,
+            totalPoints: 10,
+          }),
+        ],
+      );
+
+    expect(
+      result.submissionEvents,
+    ).toHaveLength(0);
+  });
+
   it('behält die Nutzernotiz bei geänderten Abgaben', () => {
     const result =
       compareIliasAssignments(

@@ -1,5 +1,7 @@
 import type {
   Assignment,
+  IsoDateTime,
+  SubmissionEvent,
 } from '../domain/models';
 
 export interface AssignmentComparison {
@@ -8,6 +10,52 @@ export interface AssignmentComparison {
   changedAssignments: Assignment[];
   unchangedAssignments: Assignment[];
   removedAssignments: Assignment[];
+  submissionEvents: SubmissionEvent[];
+}
+
+/*
+ * Leitet Verlaufseinträge aus dem erkannten Übergang ab. ILIAS liefert
+ * keine Abgabehistorie, daher merkt sich UniHub selbst, wann eine neue
+ * Abgabe oder neue Punkte erstmals gesehen wurden.
+ */
+function buildSubmissionEvents(
+  incoming: Assignment,
+  existing: Assignment | undefined,
+  syncedAt: IsoDateTime,
+): SubmissionEvent[] {
+  const events: SubmissionEvent[] = [];
+
+  const hasNewSubmission =
+    incoming.submittedAt !== undefined &&
+    incoming.submittedAt !== existing?.submittedAt;
+
+  if (hasNewSubmission) {
+    events.push({
+      assignmentId: incoming.id,
+      courseId: incoming.courseId,
+      kind: 'submitted',
+      occurredAt: incoming.submittedAt as IsoDateTime,
+    });
+  }
+
+  const hasNewGrading =
+    incoming.achievedPoints !== undefined &&
+    incoming.totalPoints !== undefined &&
+    (incoming.achievedPoints !== existing?.achievedPoints ||
+      incoming.totalPoints !== existing?.totalPoints);
+
+  if (hasNewGrading) {
+    events.push({
+      assignmentId: incoming.id,
+      courseId: incoming.courseId,
+      kind: 'graded',
+      occurredAt: syncedAt,
+      achievedPoints: incoming.achievedPoints,
+      totalPoints: incoming.totalPoints,
+    });
+  }
+
+  return events;
 }
 
 function hasChanged(
@@ -49,6 +97,7 @@ function hasChanged(
 export function compareIliasAssignments(
   incomingAssignments: Assignment[],
   existingAssignments: Assignment[],
+  syncedAt: IsoDateTime = new Date().toISOString(),
 ): AssignmentComparison {
   const existingById = new Map(
     existingAssignments.map(
@@ -69,10 +118,19 @@ export function compareIliasAssignments(
   const newAssignments: Assignment[] = [];
   const changedAssignments: Assignment[] = [];
   const unchangedAssignments: Assignment[] = [];
+  const submissionEvents: SubmissionEvent[] = [];
 
   for (const incoming of incomingAssignments) {
     const existing =
       existingById.get(incoming.id);
+
+    submissionEvents.push(
+      ...buildSubmissionEvents(
+        incoming,
+        existing,
+        syncedAt,
+      ),
+    );
 
     if (!existing) {
       const newAssignment = {
@@ -142,5 +200,6 @@ export function compareIliasAssignments(
     changedAssignments,
     unchangedAssignments,
     removedAssignments,
+    submissionEvents,
   };
 }
