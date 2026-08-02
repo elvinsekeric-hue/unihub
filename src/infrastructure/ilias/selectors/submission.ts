@@ -120,6 +120,21 @@ function belongsToAssignment(
   );
 }
 
+/*
+ * Die „Bewertung"-Überschrift steht meist außerhalb des engsten
+ * Containers des Download-Links (z. B. eigener .panel-heading
+ * neben der Zeile mit dem Link). Für die Erkennung wird deshalb
+ * bis zum umschließenden Panel/Card/Section-Block hochgestiegen.
+ */
+function findEvaluationPanel(
+  element: Element,
+): Element {
+  return (
+    element.closest('.panel, .card, section') ??
+    findNearestContainer(element)
+  );
+}
+
 function parseFeedbackFiles(
   document: Document,
   assignmentId: string,
@@ -141,22 +156,11 @@ function parseFeedbackFiles(
     const href =
       anchor.getAttribute('href') ?? '';
 
-    const container =
-      findNearestContainer(anchor);
-
-    const containerText = normalizeText(
-      container.textContent,
-    );
-
     const isDownload =
       /^download$/i.test(anchorText) ||
       /download/i.test(href);
 
-    const isEvaluation =
-      /Bewertung/i.test(containerText) ||
-      /annotated/i.test(containerText);
-
-    if (!isDownload || !isEvaluation) {
+    if (!isDownload) {
       continue;
     }
 
@@ -169,9 +173,31 @@ function parseFeedbackFiles(
       continue;
     }
 
-    const title = cleanFilename(
-      containerText,
+    const panelText = normalizeText(
+      findEvaluationPanel(anchor).textContent,
     );
+
+    const isEvaluation =
+      /Bewertung/i.test(panelText) ||
+      /annotated/i.test(panelText);
+
+    if (!isEvaluation) {
+      continue;
+    }
+
+    /*
+     * Der echte Dateiname steht bei Bewertungs-Downloads meist
+     * als file-Parameter in der URL, nicht zuverlässig im
+     * sichtbaren Text – der ist z. B. nur „Download".
+     */
+    const fileParam = getQueryParameter(
+      url,
+      'file',
+    );
+
+    const title = fileParam
+      ? cleanFilename(fileParam)
+      : cleanFilename(panelText);
 
     if (!looksLikeFileName(title)) {
       continue;
@@ -217,54 +243,50 @@ function parseSubmittedFiles(
       continue;
     }
 
-    const link =
-      element.querySelector<HTMLAnchorElement>(
+    /*
+     * Team-Abgaben können mehrere Dateien enthalten (z. B.
+     * PDF + ZIP). Jeder Link wird einzeln anhand seines
+     * eigenen Textes ausgewertet, statt den gesamten
+     * Container-Text als eine einzige Datei zu behandeln –
+     * sonst würden mehrere Dateinamen zusammengeklebt.
+     */
+    const links =
+      element.querySelectorAll<HTMLAnchorElement>(
         'a[href]',
       );
 
-    const filenameMatch = text.match(
-      /Abgegebene Dateien\s+(.+?)(?:Datum der letzten Abgabe|Bereits abgegebene Dateien|$)/i,
-    );
+    for (const link of links) {
+      const title = cleanFilename(
+        normalizeText(link.textContent),
+      );
 
-    const title = cleanFilename(
-      filenameMatch?.[1] ?? '',
-    );
+      if (!title || !looksLikeFileName(title)) {
+        continue;
+      }
 
-    if (!title || !looksLikeFileName(title)) {
-      continue;
+      const url = toAbsoluteUrl(
+        link.getAttribute('href') ?? '',
+        pageUrl,
+      );
+
+      if (
+        !url ||
+        !belongsToAssignment(url, assignmentId)
+      ) {
+        continue;
+      }
+
+      files.push(
+        createFile(
+          assignmentId,
+          courseId,
+          'submitted',
+          title,
+          url,
+          files.length,
+        ),
+      );
     }
-
-    /*
-     * Ohne echten Download-Link ist kein tatsächliches
-     * Dateiabgabe-Element getroffen worden, sondern z. B.
-     * ein Platzhaltertext oder ein benachbartes Widget.
-     */
-    if (!link) {
-      continue;
-    }
-
-    const url = toAbsoluteUrl(
-      link.getAttribute('href') ?? '',
-      pageUrl,
-    );
-
-    if (
-      !url ||
-      !belongsToAssignment(url, assignmentId)
-    ) {
-      continue;
-    }
-
-    files.push(
-      createFile(
-        assignmentId,
-        courseId,
-        'submitted',
-        title,
-        url,
-        files.length,
-      ),
-    );
   }
 
   return files;

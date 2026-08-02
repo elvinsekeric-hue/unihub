@@ -168,13 +168,21 @@ export function parseAssignments(
     pageUrl.includes('/go/fold/');
 
   for (const anchor of anchors) {
+    /*
+     * Die ILIAS-Reiterleiste (Übersicht, Einreichung, Liste der
+     * Übungseinheiten, …) trägt dieselbe ass_id wie die Abgabe
+     * selbst und matcht dieselben href-Muster. Reiter-Links
+     * dürfen die echte Abgabe nie mit ihrem Linktext überschreiben.
+     */
+    if (anchor.closest('#ilTab')) {
+      continue;
+    }
+
     const title = normalizeText(
       anchor.textContent,
     );
     if (
-  title.toLocaleLowerCase("de-DE") === "abgabeordner" ||
-  title.toLocaleLowerCase("de-DE") ===
-    "liste der übungseinheiten"
+  title.toLocaleLowerCase("de-DE") === "abgabeordner"
 ) {
   continue;
 }
@@ -185,11 +193,8 @@ export function parseAssignments(
     );
 
     /*
-     * „Zurück zur Übersicht"-Links auf der Übungs-Detailseite
-     * tragen dieselbe ass_id wie die aktuell betrachtete Abgabe,
-     * verlinken aber auf die Listenansicht (cmd=showOverview)
-     * statt die Abgabe selbst – sie dürfen die echte Abgabe
-     * nicht mit einem irreführenden Titel überschreiben.
+     * Zusätzliche Absicherung für Rückverweise auf die
+     * Listenansicht (cmd=showOverview) außerhalb der Reiterleiste.
      */
     if (/cmd=showoverview/i.test(url)) {
       continue;

@@ -17,7 +17,7 @@ export interface RegisteredScanSource {
    * Bestimmt, mit welcher ILIAS-Ansicht ein automatischer
    * Full-Sync diese Quelle startet (Kurs- oder Ordner-GUI).
    */
-  kind: 'course' | 'folder';
+  kind: 'course' | 'folder' | 'exercise';
 }
 
 export interface ResolvedScanSource {
@@ -86,6 +86,20 @@ export const courseRegistry: RegisteredScanSource[] = [
     titleKeywords: [
       'mathematik',
       'mathe',
+    ],
+  },
+  {
+    courseId: 'course:mathe',
+    scanSourceId:
+      'source:mathe-schriftaufgaben',
+    courseTitle: 'Mathematik',
+    sourceTitle:
+      'Mathe Abgabe der Schriftaufgaben',
+    shortName: 'MATHE',
+    kind: 'exercise',
+    iliasRefIds: ['4462026'],
+    titleKeywords: [
+      'abgabe der schriftaufgaben',
     ],
   },
 ];
@@ -213,6 +227,15 @@ function buildSourceUrl(
       'ilias.php?baseClass=ilrepositorygui' +
       '&cmdClass=ilObjFolderGUI' +
       `&ref_id=${refId}`
+    );
+  }
+
+  if (kind === 'exercise') {
+    return (
+      'https://ilias3.uni-stuttgart.de/' +
+      'ilias.php?baseClass=ilexercisehandlergui' +
+      '&cmdClass=ilObjExerciseGUI&cmd=showOverview' +
+      `&ref_id=${refId}&mode=all`
     );
   }
 

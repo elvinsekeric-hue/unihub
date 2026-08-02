@@ -125,7 +125,7 @@ describe('buildFullSyncStartUrls', () => {
   it('liefert eine Start-URL für jede Scan-Quelle', () => {
     const urls = buildFullSyncStartUrls();
 
-    expect(urls).toHaveLength(5);
+    expect(urls).toHaveLength(6);
   });
 
   it('deckt alle registrierten refIds ab', () => {
@@ -137,6 +137,7 @@ describe('buildFullSyncStartUrls', () => {
       '4392414',
       '4390617',
       '4405757',
+      '4462026',
     ]) {
       expect(
         urls.some((url) =>
@@ -163,7 +164,8 @@ describe('buildFullSyncStartUrls', () => {
 
     const courseUrls = urls.filter(
       (url) =>
-        !url.includes('ref_id=4364743'),
+        !url.includes('ref_id=4364743') &&
+        !url.includes('ref_id=4462026'),
     );
 
     expect(courseUrls).toHaveLength(4);
@@ -173,6 +175,18 @@ describe('buildFullSyncStartUrls', () => {
         'cmdClass=ilobjcoursegui',
       );
     }
+  });
+
+  it('verwendet für Übungsobjekte die ilObjExerciseGUI', () => {
+    const urls = buildFullSyncStartUrls();
+
+    const exerciseUrl = urls.find((url) =>
+      url.includes('ref_id=4462026'),
+    );
+
+    expect(exerciseUrl).toContain(
+      'cmdClass=ilObjExerciseGUI',
+    );
   });
 
   it('enthält keine Duplikate', () => {

@@ -405,4 +405,126 @@ it('ordnet Dateien der aktuell geöffneten Ordnerseite zu', () => {
       result.assignments[0].url,
     ).not.toContain('showOverview');
   });
+
+  it('ignoriert die gesamte ILIAS-Reiterleiste (#ilTab)', () => {
+    const detailHtml = `
+      <html>
+        <body>
+          <ul id="ilTab" class="nav ilCollapsable hidden-print">
+            <li>
+              <a href="https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilexercisehandlergui&cmdNode=cs:mw&cmdClass=ilObjExerciseGUI&cmd=showOverview&ref_id=4435163&ass_id=131184&mode=all">Liste der Übungseinheiten</a>
+            </li>
+            <li id="tab_ass" class="active">
+              <a href="https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilexercisehandlergui&cmdNode=cs:mw:53&cmdClass=ilAssignmentPresentationGUI&ref_id=4435163&ass_id=131184&mode=all">Übersicht <span class="ilAccHidden">(Ausgewählte)</span></a>
+            </li>
+            <li id="tab_submission">
+              <a href="https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilexercisehandlergui&cmdNode=cs:mw:53:ci:ch&cmdClass=ilExSubmissionFileGUI&cmd=submissionScreen&ref_id=4435163&ass_id=131184&mode=all">Einreichung</a>
+            </li>
+          </ul>
+          <h1>Abgabe Blatt 08</h1>
+        </body>
+      </html>
+    `;
+
+    const result = parseIliasPage(
+      detailHtml,
+      'course:lds',
+      'https://ilias3.uni-stuttgart.de/' +
+        'ilias.php?baseClass=ilexercisehandlergui' +
+        '&cmdClass=ilAssignmentPresentationGUI' +
+        '&ref_id=4435163&ass_id=131184',
+    );
+
+    expect(result.assignments).toHaveLength(1);
+    expect(result.assignments[0].title).not.toBe(
+      'Übersicht (Ausgewählte)',
+    );
+    expect(result.assignments[0].title).not.toBe(
+      'Liste der Übungseinheiten',
+    );
+    expect(result.assignments[0].title).not.toBe(
+      'Einreichung',
+    );
+  });
+
+  it('trennt mehrere abgegebene Dateien in derselben Zeile (Team-Abgabe)', () => {
+    const detailHtml = `
+      <html>
+        <body>
+          <table>
+            <tbody>
+              <tr>
+                <td>
+                  Abgegebene Dateien
+                  <a href="https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilexercisehandlergui&cmdClass=ilAssignmentPresentationGUI&ref_id=4448956&ass_id=132856">Ex00_Team.pdf</a>
+                  <a href="https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilexercisehandlergui&cmdClass=ilAssignmentPresentationGUI&ref_id=4448956&ass_id=132856">Ex00_Team_project.zip</a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const result = parseIliasPage(
+      detailHtml,
+      'course:dsa',
+      'https://ilias3.uni-stuttgart.de/' +
+        'ilias.php?baseClass=ilexercisehandlergui' +
+        '&cmdClass=ilAssignmentPresentationGUI' +
+        '&ref_id=4448956&ass_id=132856',
+    );
+
+    const submitted = result.submissionFiles.filter(
+      (file) => file.kind === 'submitted',
+    );
+
+    expect(submitted).toHaveLength(2);
+    expect(
+      submitted.map((file) => file.title),
+    ).toEqual([
+      'Ex00_Team.pdf',
+      'Ex00_Team_project.zip',
+    ]);
+  });
+
+  it('erkennt eine Bewertungsdatei über den file-Parameter im Download-Link', () => {
+    const detailHtml = `
+      <html>
+        <body>
+          <div class="panel panel-sub panel-flex">
+            <div class="panel-heading ilBlockHeader">
+              <h3>Bewertung</h3>
+            </div>
+            <div class="panel-body">
+              <div class="row">
+                <div class="control-label"><p>Sekeric_08.pdf</p></div>
+                <div>
+                  <a href="https://ilias3.uni-stuttgart.de/ilias.php?baseClass=ilexercisehandlergui&cmdClass=ilexsubmissiongui&cmd=downloadFeedbackFile&ref_id=4435163&ass_id=131184&mode=all&file=Sekeric_08.pdf">Download</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const result = parseIliasPage(
+      detailHtml,
+      'course:lds',
+      'https://ilias3.uni-stuttgart.de/' +
+        'ilias.php?baseClass=ilexercisehandlergui' +
+        '&cmdClass=ilAssignmentPresentationGUI' +
+        '&ref_id=4435163&ass_id=131184',
+    );
+
+    const feedback = result.submissionFiles.filter(
+      (file) => file.kind === 'feedback',
+    );
+
+    expect(feedback).toHaveLength(1);
+    expect(feedback[0].title).toBe(
+      'Sekeric_08.pdf',
+    );
+  });
 });
