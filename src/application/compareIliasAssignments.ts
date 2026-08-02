@@ -18,7 +18,7 @@ export interface AssignmentComparison {
  * keine Abgabehistorie, daher merkt sich UniHub selbst, wann eine neue
  * Abgabe oder neue Punkte erstmals gesehen wurden.
  */
-function buildSubmissionEvents(
+export function buildSubmissionEvents(
   incoming: Assignment,
   existing: Assignment | undefined,
   syncedAt: IsoDateTime,

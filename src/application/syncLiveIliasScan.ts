@@ -1,4 +1,5 @@
 import {
+  buildSubmissionEvents,
   compareIliasAssignments,
 } from './compareIliasAssignments';
 
@@ -7,6 +8,9 @@ import {
   saveAssignments,
   saveSubmissionFiles,
 } from '../infrastructure/sqlite/assignmentStore';
+import {
+  saveSubmissionEvents,
+} from '../infrastructure/sqlite/submissionEventStore';
 import { invoke } from '@tauri-apps/api/core';
 import { compareIliasFiles } from './compareIliasFiles';
 import {
@@ -277,27 +281,35 @@ const pageSupportsAssignments =
   isAssignmentPage(scan.pageUrl) ||
   parsed.assignments.length > 0;
 
+const isAssignmentDetailPage =
+  Boolean(
+    new URL(
+      scan.pageUrl,
+    ).searchParams.get('ass_id'),
+  );
+
+/*
+ * Auf einer Detailseite kennen wir den Ordner der Abgabe
+ * nicht zwangsläufig (currentFolderId ist hier meist leer),
+ * daher wird beim Laden nicht nach Ordner gefiltert – die
+ * passende bestehende Abgabe wird unten per ID gesucht.
+ */
 const existingAssignments =
   pageSupportsAssignments
     ? await loadAssignments(
         courseId,
         true,
         scanSourceId,
-        currentFolderId ?? null,
+        isAssignmentDetailPage
+          ? undefined
+          : (currentFolderId ?? null),
       )
     : [];
 
-    
+
 
     await saveFiles(comparison.filesToSave);
     await saveFolders(scannedFolders)
-
-    const isAssignmentDetailPage =
-  Boolean(
-    new URL(
-      scan.pageUrl,
-    ).searchParams.get('ass_id'),
-  );
 
 const assignmentComparison =
   pageSupportsAssignments &&
@@ -305,6 +317,7 @@ const assignmentComparison =
     ? compareIliasAssignments(
         scannedAssignments,
         existingAssignments,
+        startedAt,
       )
     : {
         assignmentsToSave:
@@ -314,7 +327,19 @@ const assignmentComparison =
           scannedAssignments,
         unchangedAssignments: [],
         removedAssignments: [],
-        submissionEvents: [],
+        submissionEvents:
+          scannedAssignments.flatMap(
+            (assignment) =>
+              buildSubmissionEvents(
+                assignment,
+                existingAssignments.find(
+                  (existing) =>
+                    existing.id ===
+                    assignment.id,
+                ),
+                startedAt,
+              ),
+          ),
       };
 
 await saveAssignments(
@@ -323,6 +348,10 @@ await saveAssignments(
 
 await saveSubmissionFiles(
   scannedSubmissionFiles,
+);
+
+await saveSubmissionEvents(
+  assignmentComparison.submissionEvents,
 );
 
     const removedFolders = pageSupportsFiles
