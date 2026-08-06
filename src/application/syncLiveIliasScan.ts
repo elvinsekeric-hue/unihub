@@ -34,6 +34,11 @@ import {
   saveSyncSnapshot,
 } from '../infrastructure/sqlite/fileStore';
 import { retryWithBackoff } from '../shared/retry';
+import { sha256Hex } from '../shared/hash';
+import {
+  getStoredPageHash,
+  storePageHash,
+} from '../infrastructure/sqlite/pageHashStore';
 
 interface IliasScan {
   scanId: number;
@@ -61,6 +66,8 @@ newAssignments: number;
 changedAssignments: number;
 unchangedAssignments: number;
 removedAssignments: number;
+  /** true, wenn der Scan unverändert war und übersprungen wurde. */
+  skipped?: boolean;
 }
 
 function isFolderPage(pageUrl: string): boolean {
@@ -192,6 +199,40 @@ const currentScan = scan;
       courseId,
       scanSourceId,
     } = await resolveSyncSource(currentScan);
+
+    /*
+     * Delta-Scan: Ist der HTML-Inhalt exakt derselbe wie beim
+     * letzten Scan dieser URL, kann das komplette Parsen/Vergleichen/
+     * Speichern entfallen – es gäbe ohnehin keine Änderung zu
+     * erkennen.
+     */
+    const contentHash = await sha256Hex(
+      currentScan.html,
+    );
+
+    const storedHash = await getStoredPageHash(
+      currentScan.pageUrl,
+    );
+
+    if (storedHash === contentHash) {
+      return {
+        courseId,
+        scanSourceId,
+        discovered: 0,
+        discoveredFolders: 0,
+        discoveredAssignments: 0,
+        newFiles: 0,
+        changedFiles: 0,
+        unchangedFiles: 0,
+        removedFiles: 0,
+        removedFolders: 0,
+        newAssignments: 0,
+        changedAssignments: 0,
+        unchangedAssignments: 0,
+        removedAssignments: 0,
+        skipped: true,
+      };
+    }
 
     /*
      * Ein lange offener Tab kann einen veralteten Snapshot der
@@ -474,6 +515,11 @@ await saveSubmissionEvents(
 };
 
     await rebuildSearchIndex();
+
+    await storePageHash(
+      currentScan.pageUrl,
+      contentHash,
+    );
 
     return result;
   }

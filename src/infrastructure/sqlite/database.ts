@@ -283,6 +283,19 @@ await database.execute(`
       PRIMARY KEY (entity_id, tag)
     )
   `);
+
+  /*
+   * Delta-Scan: Hash des zuletzt gesehenen HTML-Inhalts pro Seite.
+   * Ist der Hash identisch, hat sich nichts geändert – Parsen,
+   * Vergleichen und Speichern können übersprungen werden.
+   */
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS page_content_hashes (
+      page_url TEXT PRIMARY KEY NOT NULL,
+      content_hash TEXT NOT NULL,
+      hashed_at TEXT NOT NULL
+    )
+  `);
 }
 
 export async function getDatabase(): Promise<Database> {

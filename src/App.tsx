@@ -518,6 +518,15 @@ const [
               return;
             }
 
+            if (result.skipped) {
+              console.log(
+                `${result.courseId} / ` +
+                  `${result.scanSourceId}: ` +
+                  'Seite unverändert, Scan übersprungen.',
+              );
+              return;
+            }
+
             await Promise.all([
               refreshDashboard(),
               refreshSyncHistory(),
