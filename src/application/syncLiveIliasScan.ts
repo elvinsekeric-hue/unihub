@@ -29,9 +29,11 @@ import {
 } from '../infrastructure/sqlite/folderStore';
 import {
   loadFiles,
+  loadSyncSnapshots,
   saveFiles,
   saveSyncSnapshot,
 } from '../infrastructure/sqlite/fileStore';
+import { retryWithBackoff } from '../shared/retry';
 
 interface IliasScan {
   scanId: number;
@@ -176,9 +178,9 @@ const currentScan = scan;
   });
 }
 
-  try {
+  async function processScan(): Promise<LiveSyncResult> {
     if (
-      scan.source !==
+      currentScan.source !==
       'unihub-ilias-extension'
     ) {
       throw new Error(
@@ -189,20 +191,41 @@ const currentScan = scan;
     const {
       courseId,
       scanSourceId,
-    } = await resolveSyncSource(scan);
+    } = await resolveSyncSource(currentScan);
+
+    /*
+     * Ein lange offener Tab kann einen veralteten Snapshot der
+     * Seite senden. Vergleicht man den gegen den aktuellen
+     * DB-Stand, würden zwischenzeitlich hinzugekommene Inhalte
+     * fälschlich als „entfernt" markiert. Neue/geänderte Inhalte
+     * aus so einem Scan sind weiterhin gültig und werden gespeichert
+     * – nur die Entfernungs-Erkennung wird für ihn übersprungen.
+     */
+    const [lastSnapshot] =
+      await loadSyncSnapshots(
+        courseId,
+        1,
+        scanSourceId,
+      );
+
+    const isStaleScan = Boolean(
+      lastSnapshot &&
+        currentScan.scannedAt <
+          lastSnapshot.completedAt,
+    );
 
     const pageRefId =
-      getPageRefId(scan.pageUrl);
+      getPageRefId(currentScan.pageUrl);
 
     const currentFolder =
       pageRefId &&
-      isFolderPage(scan.pageUrl)
+      isFolderPage(currentScan.pageUrl)
         ? await loadFolderByRefId(pageRefId)
         : undefined;
 
     const currentFolderId =
       pageRefId &&
-      isFolderPage(scan.pageUrl)
+      isFolderPage(currentScan.pageUrl)
         ? `folder:${pageRefId}`
         : undefined;
 
@@ -210,9 +233,9 @@ const currentScan = scan;
       currentFolder?.path ?? [];
 
     const parsed = parseIliasPage(
-      scan.html,
+      currentScan.html,
       courseId,
-      scan.pageUrl,
+      currentScan.pageUrl,
     );
 
     const scannedFiles = parsed.files.map(
@@ -255,8 +278,8 @@ const currentScan = scan;
   );
 
     const pageSupportsFiles =
-  isFolderPage(scan.pageUrl) ||
-  isCoursePage(scan.pageUrl);
+  isFolderPage(currentScan.pageUrl) ||
+  isCoursePage(currentScan.pageUrl);
 
 const existingFiles = pageSupportsFiles
   ? await loadFiles(
@@ -281,12 +304,12 @@ const comparison = pageSupportsFiles
     };
 
 const pageSupportsAssignments =
-  isAssignmentPage(scan.pageUrl) ||
+  isAssignmentPage(currentScan.pageUrl) ||
   parsed.assignments.length > 0;
 
 const pageAssignmentId =
   new URL(
-    scan.pageUrl,
+    currentScan.pageUrl,
   ).searchParams.get('ass_id');
 
 const isAssignmentDetailPage =
@@ -312,7 +335,15 @@ const existingAssignments =
 
 
 
-    await saveFiles(comparison.filesToSave);
+    const filesToSave = isStaleScan
+      ? [
+          ...comparison.newFiles,
+          ...comparison.changedFiles,
+          ...comparison.unchangedFiles,
+        ]
+      : comparison.filesToSave;
+
+    await saveFiles(filesToSave);
     await saveFolders(scannedFolders)
 
 const assignmentComparison =
@@ -346,9 +377,15 @@ const assignmentComparison =
           ),
       };
 
-await saveAssignments(
-  assignmentComparison.assignmentsToSave,
-);
+const assignmentsToSave = isStaleScan
+  ? [
+      ...assignmentComparison.newAssignments,
+      ...assignmentComparison.changedAssignments,
+      ...assignmentComparison.unchangedAssignments,
+    ]
+  : assignmentComparison.assignmentsToSave;
+
+await saveAssignments(assignmentsToSave);
 
 if (pageAssignmentId) {
   await replaceSubmissionFilesForAssignment(
@@ -361,7 +398,8 @@ await saveSubmissionEvents(
   assignmentComparison.submissionEvents,
 );
 
-    const removedFolders = pageSupportsFiles
+    const removedFolders =
+      pageSupportsFiles && !isStaleScan
   ? await markMissingFoldersRemoved(
       courseId,
       scanSourceId,
@@ -371,6 +409,15 @@ await saveSubmissionEvents(
       ),
     )
   : 0;
+
+    const appliedRemovedFiles = isStaleScan
+      ? 0
+      : comparison.removedFiles.length;
+
+    const appliedRemovedAssignments = isStaleScan
+      ? 0
+      : assignmentComparison.removedAssignments
+          .length;
 
     await saveSyncSnapshot({
   courseId,
@@ -390,9 +437,8 @@ await saveSubmissionEvents(
     assignmentComparison
       .changedAssignments.length,
   removed:
-    comparison.removedFiles.length +
-    assignmentComparison
-      .removedAssignments.length,
+    appliedRemovedFiles +
+    appliedRemovedAssignments,
 });
 
    const result: LiveSyncResult = {
@@ -410,8 +456,7 @@ await saveSubmissionEvents(
     comparison.changedFiles.length,
   unchangedFiles:
     comparison.unchangedFiles.length,
-  removedFiles:
-    comparison.removedFiles.length,
+  removedFiles: appliedRemovedFiles,
 
   newAssignments:
     assignmentComparison
@@ -423,14 +468,26 @@ await saveSubmissionEvents(
     assignmentComparison
       .unchangedAssignments.length,
   removedAssignments:
-    assignmentComparison
-      .removedAssignments.length,
+    appliedRemovedAssignments,
 
   removedFolders,
 };
 
     await rebuildSearchIndex();
 
+    return result;
+  }
+
+  try {
+    /*
+     * Transiente Fehler (z. B. eine kurz gesperrte SQLite-Datei)
+     * sollen den Scan nicht sofort und stillschweigend verwerfen.
+     */
+    const result = await retryWithBackoff(
+      processScan,
+      3,
+      500,
+    );
 
     await completeScan(true);
 

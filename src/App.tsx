@@ -46,6 +46,10 @@ import {
   formatWeeklySummary,
 } from './application/weeklySummary';
 import {
+  checkBridgeHealth,
+  type BridgeHealth,
+} from './application/health';
+import {
   addEntityTag,
   getAllTags,
   getFavorites,
@@ -217,6 +221,14 @@ const [
 
   const [paletteOpen, setPaletteOpen] =
     useState(false);
+
+  const [bridgeHealth, setBridgeHealth] = useState<
+    BridgeHealth | undefined
+  >();
+
+  const [backupStatus, setBackupStatus] = useState<
+    string | undefined
+  >();
 
   const [syncing, setSyncing] = useState(false);
   const [
@@ -440,6 +452,50 @@ const [
         handleKeyDown,
       );
   }, []);
+
+  useEffect(() => {
+    let disposed = false;
+
+    async function poll(): Promise<void> {
+      const health = await checkBridgeHealth();
+
+      if (!disposed) {
+        setBridgeHealth(health);
+      }
+    }
+
+    poll();
+
+    const interval = window.setInterval(
+      poll,
+      15_000,
+    );
+
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  async function runBackup(): Promise<void> {
+    try {
+      setBackupStatus('Sichere Datenbank …');
+
+      const path = await invoke<string>(
+        'backup_database',
+      );
+
+      setBackupStatus(`Backup gespeichert: ${path}`);
+    } catch (error) {
+      setBackupStatus(
+        `Backup fehlgeschlagen: ${
+          error instanceof Error
+            ? error.message
+            : String(error)
+        }`,
+      );
+    }
+  }
 
   useEffect(() => {
     let disposed = false;
@@ -1397,21 +1453,59 @@ function showFavorites(): void {
 
                 <div className="status-card">
                   <div className="status-line">
-                    <span className="pulse" />
+                    <span
+                      className={
+                        bridgeHealth?.reachable
+                          ? 'pulse'
+                          : 'pulse pulse-down'
+                      }
+                    />
                     <strong>
-                      ILIAS-Verbindung bereit
+                      {bridgeHealth?.reachable
+                        ? 'Bridge erreichbar'
+                        : bridgeHealth
+                          ? 'Bridge nicht erreichbar'
+                          : 'Bridge wird geprüft …'}
                     </strong>
                   </div>
 
                   <p>
                     Live-Scans werden automatisch
                     verarbeitet und in SQLite
-                    protokolliert.
+                    protokolliert.{' '}
+                    {bridgeHealth?.reachable &&
+                      bridgeHealth.queuedScans !==
+                        undefined && (
+                        <>
+                          {bridgeHealth.queuedScans}{' '}
+                          Scan(s) in der Warteschlange.
+                        </>
+                      )}
+                  </p>
+
+                  <p className="bridge-hint">
+                    Zeigt nur, ob die App-Bridge läuft
+                    – ob die Browser-Extension
+                    verbunden ist, siehst du nur im
+                    Browser selbst.
                   </p>
 
                   <code>
                     Phase 3 · Live-Synchronisierung
                   </code>
+
+                  <button
+                    className="secondary-button backup-button"
+                    onClick={runBackup}
+                  >
+                    ⤓ Datenbank-Backup erstellen
+                  </button>
+
+                  {backupStatus && (
+                    <small className="backup-status">
+                      {backupStatus}
+                    </small>
+                  )}
 
                   <div className="sync-history">
                     <strong>

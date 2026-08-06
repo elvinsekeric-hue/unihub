@@ -82,6 +82,10 @@ h1 { margin: 0; font-size: 30px; letter-spacing: -0.6px; }
 .status-card { margin-top: 18px; border-radius: 14px; padding: 17px; background: #e9f2f8; border: 1px solid #cadde9; }
 .status-line { display: flex; gap: 9px; align-items: center; }
 .pulse { width: 9px; height: 9px; border-radius: 50%; background: #2f7d59; box-shadow: 0 0 0 5px rgba(47,125,89,.13); }
+.pulse-down { background: #ad3d35; box-shadow: 0 0 0 5px rgba(173,61,53,.13); }
+.bridge-hint { color: #8c98a3; font-size: 11px; }
+.backup-button { margin-top: 10px; width: 100%; justify-content: center; }
+.backup-status { display: block; margin-top: 6px; color: #526779; word-break: break-all; }
 .status-card p { color: #526779; font-size: 13px; line-height: 1.5; }
 .status-card code { font-size: 11px; color: #315a82; }
 .empty { padding: 34px; text-align: center; color: #71808e; }

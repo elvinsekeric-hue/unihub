@@ -139,6 +139,41 @@ fn complete_ilias_scan(
     Ok(())
 }
 
+/*
+ * Kopiert die SQLite-Datenbank an einen Zeitstempel-benannten Pfad
+ * im Download-Ordner (Fallback: App-Datenverzeichnis). Reine
+ * Dateikopie, keine Fachlogik.
+ */
+#[tauri::command]
+fn backup_database(app: tauri::AppHandle) -> Result<String, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+
+    let db_path = app_data_dir.join("unihub.db");
+
+    if !db_path.exists() {
+        return Err(
+            "Es wurde noch keine Datenbank angelegt.".to_string(),
+        );
+    }
+
+    let target_dir = app
+        .path()
+        .download_dir()
+        .unwrap_or_else(|_| app_data_dir.clone());
+
+    let timestamp = now_seconds();
+    let backup_path =
+        target_dir.join(format!("unihub-backup-{timestamp}.db"));
+
+    std::fs::copy(&db_path, &backup_path)
+        .map_err(|error| error.to_string())?;
+
+    Ok(backup_path.display().to_string())
+}
+
 #[tauri::command]
 fn start_full_sync(
     course_urls: Vec<String>,
@@ -464,6 +499,35 @@ async fn receive_scan(
     })))
 }
 
+/*
+ * Reiner Erreichbarkeits-Check für die UI: läuft die Bridge, wie
+ * viele Scans warten in der Queue, ist gerade ein Full-Sync aktiv.
+ * Keine Fachlogik, nur ein Blick auf den vorhandenen BridgeState.
+ */
+async fn health_check(
+    State(state): State<HttpState>,
+) -> Json<serde_json::Value> {
+    let bridge_state = state.app.state::<BridgeState>();
+
+    let queued_scans = bridge_state
+        .scan_queue
+        .lock()
+        .map(|queue| queue.len())
+        .unwrap_or(0);
+
+    let full_sync_active = bridge_state
+        .active_full_sync_id
+        .lock()
+        .map(|id| id.is_some())
+        .unwrap_or(false);
+
+    Json(serde_json::json!({
+        "ok": true,
+        "queuedScans": queued_scans,
+        "fullSyncActive": full_sync_active
+    }))
+}
+
 async fn take_full_sync_command(
     State(state): State<HttpState>,
 ) -> Result<
@@ -575,6 +639,10 @@ async fn start_local_bridge(app: AppHandle) {
 
     let router = Router::new()
     .route(
+        "/api/health",
+        get(health_check),
+    )
+    .route(
         "/api/ilias-scan",
         post(receive_scan),
     )
@@ -646,7 +714,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             take_next_ilias_scan,
             complete_ilias_scan,
-            start_full_sync
+            start_full_sync,
+            backup_database
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
