@@ -49,6 +49,7 @@ import {
   checkBridgeHealth,
   type BridgeHealth,
 } from './application/health';
+import { findDuplicateFileIds } from './application/duplicateDetection';
 import {
   addEntityTag,
   getAllTags,
@@ -225,6 +226,34 @@ const [
   const [bridgeHealth, setBridgeHealth] = useState<
     BridgeHealth | undefined
   >();
+
+  const [theme, setTheme] = useState<
+    'light' | 'dark'
+  >(() => {
+    const saved = window.localStorage.getItem(
+      'unihub-theme',
+    );
+
+    if (saved === 'light' || saved === 'dark') {
+      return saved;
+    }
+
+    return window.matchMedia?.(
+      '(prefers-color-scheme: dark)',
+    ).matches
+      ? 'dark'
+      : 'light';
+  });
+
+  const [density, setDensity] = useState<
+    'detailed' | 'compact'
+  >(
+    () =>
+      (window.localStorage.getItem(
+        'unihub-density',
+      ) as 'detailed' | 'compact' | null) ??
+      'detailed',
+  );
 
   const [backupStatus, setBackupStatus] = useState<
     string | undefined
@@ -452,6 +481,25 @@ const [
         handleKeyDown,
       );
   }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute(
+      'data-theme',
+      theme,
+    );
+
+    window.localStorage.setItem(
+      'unihub-theme',
+      theme,
+    );
+  }, [theme]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      'unihub-density',
+      density,
+    );
+  }, [density]);
 
   useEffect(() => {
     let disposed = false;
@@ -734,6 +782,14 @@ useEffect(() => {
         ? file.folderId === activeFolderId
         : !file.folderId
     ) ?? [];
+
+  const duplicateFileIds = useMemo(
+    () =>
+      findDuplicateFileIds(
+        courseView?.files ?? [],
+      ),
+    [courseView],
+  );
 
   /*
    * Punktezusammenfassung: erreichte/maximale Punkte
@@ -1068,6 +1124,22 @@ function showFavorites(): void {
 
           <button className="nav-item">
             ⚙ <span>Einstellungen</span>
+          </button>
+
+          <button
+            className="nav-item theme-toggle"
+            onClick={() =>
+              setTheme((current) =>
+                current === 'dark' ? 'light' : 'dark',
+              )
+            }
+          >
+            {theme === 'dark' ? '☀' : '☾'}{' '}
+            <span>
+              {theme === 'dark'
+                ? 'Heller Modus'
+                : 'Dunkler Modus'}
+            </span>
           </button>
         </nav>
 
@@ -1772,6 +1844,14 @@ function showFavorites(): void {
                                 )} KB`
                               : ''}
                           </small>
+
+                          {duplicateFileIds.has(
+                            file.id,
+                          ) && (
+                            <span className="duplicate-badge">
+                              ⚠ Auch in anderem Ordner
+                            </span>
+                          )}
                         </span>
                       </button>
 
@@ -2133,12 +2213,32 @@ function showFavorites(): void {
           Bewertet
         </option>
       </select>
+
+      <div className="density-toggle">
+        <button
+          className={
+            density === 'detailed' ? 'active' : ''
+          }
+          onClick={() => setDensity('detailed')}
+        >
+          Detailliert
+        </button>
+        <button
+          className={
+            density === 'compact' ? 'active' : ''
+          }
+          onClick={() => setDensity('compact')}
+        >
+          Kompakt
+        </button>
+      </div>
     </div>
 
     <div className="assignment-list">
       {visibleAssignments.map((assignment) => (
         <AssignmentCard
           key={assignment.id}
+          compact={density === 'compact'}
           assignment={assignment}
           course={courses.find(
             (entry) =>
@@ -2189,6 +2289,7 @@ function showFavorites(): void {
       {weeklyAssignments.map((assignment) => (
         <AssignmentCard
           key={assignment.id}
+          compact={density === 'compact'}
           assignment={assignment}
           course={courses.find(
             (entry) =>

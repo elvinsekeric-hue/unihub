@@ -54,6 +54,7 @@ export interface AssignmentCardProps {
   historyEvents: SubmissionEvent[] | undefined;
   onToggleHistory: () => void;
   onOpen: (url: string) => void;
+  compact?: boolean;
 }
 
 export function AssignmentCard({
@@ -66,11 +67,17 @@ export function AssignmentCard({
   historyEvents,
   onToggleHistory,
   onOpen,
+  compact = false,
 }: AssignmentCardProps) {
   const deadlineHint = getDeadlineHint(assignment);
 
   return (
-    <article className="assignment-row">
+    <article
+      className={
+        'assignment-row' +
+        (compact ? ' assignment-row-compact' : '')
+      }
+    >
       <span
         className="course-badge"
         style={{
