@@ -140,6 +140,24 @@ export interface SearchResult {
   snippet?: string;
 }
 
+export interface RecentlyOpenedEntry {
+  id: EntityId;
+  entityType: SearchResultType;
+  courseId: EntityId;
+  title: string;
+  url: string;
+  openedAt: IsoDateTime;
+}
+
+export interface FavoriteEntry {
+  id: EntityId;
+  entityType: SearchResultType;
+  courseId: EntityId;
+  title: string;
+  url: string;
+  createdAt: IsoDateTime;
+}
+
 export interface Announcement {
   id: EntityId;
   courseId: EntityId;

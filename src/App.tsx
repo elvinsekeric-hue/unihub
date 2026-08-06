@@ -41,12 +41,23 @@ import {
 import {
   buildPointsTrend,
 } from './application/pointsTrend';
+import {
+  addEntityTag,
+  getAllTags,
+  getFavorites,
+  getRecentlyOpened,
+  removeEntityTag,
+  toggleFavoriteEntry,
+  trackRecentlyOpened,
+} from './application/organization';
 
 import type {
   ActivityItem,
   Assignment,
   Course,
+  FavoriteEntry,
   Folder,
+  RecentlyOpenedEntry,
   SearchResult,
   SubmissionEvent,
 } from './domain/models';
@@ -69,7 +80,8 @@ type AppView =
   | 'course'
   | 'assignments'
   | 'week'
-  | 'calendar';
+  | 'calendar'
+  | 'favorites';
 
 const iconFor = (
   type: ActivityItem['type'],
@@ -121,6 +133,23 @@ export default function App() {
     syncHistory,
     setSyncHistory,
   ] = useState<StoredSyncSnapshot[]>([]);
+
+  const [
+    recentlyOpened,
+    setRecentlyOpened,
+  ] = useState<RecentlyOpenedEntry[]>([]);
+
+  const [favorites, setFavorites] = useState<
+    FavoriteEntry[]
+  >([]);
+
+  const [tagsByEntity, setTagsByEntity] = useState<
+    Map<string, string[]>
+  >(new Map());
+
+  const [tagDrafts, setTagDrafts] = useState<
+    Record<string, string>
+  >({});
 
   const [
     courseView,
@@ -266,6 +295,74 @@ const [
     setSyncHistory(history);
   }
 
+  async function refreshOrganization(): Promise<void> {
+    const [recent, favoriteEntries, tags] =
+      await Promise.all([
+        getRecentlyOpened(8),
+        getFavorites(),
+        getAllTags(),
+      ]);
+
+    setRecentlyOpened(recent);
+    setFavorites(favoriteEntries);
+    setTagsByEntity(tags);
+  }
+
+  async function openAndTrack(
+    entry: {
+      id: string;
+      entityType:
+        | 'file'
+        | 'folder'
+        | 'assignment';
+      courseId: string;
+      title: string;
+      url: string;
+    },
+  ): Promise<void> {
+    await safeOpen(entry.url);
+    await trackRecentlyOpened(entry);
+    await refreshOrganization();
+  }
+
+  async function handleToggleFavorite(entry: {
+    id: string;
+    entityType: 'file' | 'folder' | 'assignment';
+    courseId: string;
+    title: string;
+    url: string;
+  }): Promise<void> {
+    await toggleFavoriteEntry(entry);
+    await refreshOrganization();
+  }
+
+  async function handleAddTag(
+    entityId: string,
+  ): Promise<void> {
+    const tag = (tagDrafts[entityId] ?? '').trim();
+
+    if (!tag) {
+      return;
+    }
+
+    await addEntityTag(entityId, tag);
+
+    setTagDrafts((drafts) => ({
+      ...drafts,
+      [entityId]: '',
+    }));
+
+    await refreshOrganization();
+  }
+
+  async function handleRemoveTag(
+    entityId: string,
+    tag: string,
+  ): Promise<void> {
+    await removeEntityTag(entityId, tag);
+    await refreshOrganization();
+  }
+
   async function refreshCurrentCourse():
   Promise<void> {
     if (!courseView) {
@@ -303,6 +400,7 @@ const [
     Promise.all([
       refreshDashboard(),
       refreshSyncHistory(),
+      refreshOrganization(),
     ]).catch((error) => {
       console.error(
         'UniHub konnte nicht vollständig geladen werden:',
@@ -735,6 +833,11 @@ function showCalendar(): void {
   setActiveFolderId(undefined);
 }
 
+function showFavorites(): void {
+  setView('favorites');
+  setActiveFolderId(undefined);
+}
+
   function showCourses(): void {
     setView('courses');
     setActiveFolderId(undefined);
@@ -831,6 +934,17 @@ function showCalendar(): void {
   🗓 <span>Kalender</span>
 </button>
 
+<button
+  className={
+    `nav-item ${
+      view === 'favorites' ? 'active' : ''
+    }`
+  }
+  onClick={showFavorites}
+>
+  ★ <span>Favoriten</span>
+</button>
+
           <button
             className={
               `nav-item ${
@@ -884,6 +998,9 @@ function showCalendar(): void {
               {view === 'calendar' &&
                 'Kalender'}
 
+              {view === 'favorites' &&
+                'Favoriten'}
+
               {view === 'courses' &&
                 'Meine Kurse'}
 
@@ -900,6 +1017,9 @@ function showCalendar(): void {
 
               {view === 'calendar' &&
                 'Alle Fristen im Monatsüberblick, farblich nach Kurs.'}
+
+              {view === 'favorites' &&
+                'Markierte Dateien, Ordner und Aufgaben, unabhängig von der ILIAS-Struktur.'}
 
               {view === 'courses' &&
                 'Alle verbundenen ILIAS-Kurse.'}
@@ -1171,6 +1291,43 @@ function showCalendar(): void {
                   ))}
                 </div>
 
+                {recentlyOpened.length > 0 && (
+                  <div className="recently-opened">
+                    <div className="section-heading">
+                      <div>
+                        <h2>Zuletzt geöffnet</h2>
+                      </div>
+                    </div>
+
+                    {recentlyOpened.map((entry) => (
+                      <button
+                        key={entry.id}
+                        className="recently-opened-item"
+                        onClick={() =>
+                          openAndTrack({
+                            id: entry.id,
+                            entityType:
+                              entry.entityType,
+                            courseId: entry.courseId,
+                            title: entry.title,
+                            url: entry.url,
+                          })
+                        }
+                      >
+                        <span>
+                          {entry.entityType === 'file'
+                            ? '📄'
+                            : entry.entityType ===
+                                'folder'
+                              ? '📁'
+                              : '⏳'}
+                        </span>
+                        {entry.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <div className="status-card">
                   <div className="status-line">
                     <span className="pulse" />
@@ -1347,62 +1504,181 @@ function showCalendar(): void {
             </div>
 
             <div className="content-browser">
-              {visibleFolders.map((folder) => (
-                <button
-                  className="browser-row"
-                  key={folder.id}
-                  onClick={() =>
-                    setActiveFolderId(folder.id)
-                  }
-                >
-                  <span className="browser-icon">
-                    📁
-                  </span>
+              {visibleFolders.map((folder) => {
+                const isFav = favorites.some(
+                  (entry) => entry.id === folder.id,
+                );
 
-                  <span className="browser-body">
-                    <strong>{folder.title}</strong>
-                    <small>Ordner</small>
-                  </span>
+                return (
+                  <div
+                    className="browser-row"
+                    key={folder.id}
+                  >
+                    <button
+                      className="browser-row-main"
+                      onClick={() =>
+                        setActiveFolderId(folder.id)
+                      }
+                    >
+                      <span className="browser-icon">
+                        📁
+                      </span>
 
-                  <span className="chevron">
-                    ›
-                  </span>
-                </button>
-              ))}
+                      <span className="browser-body">
+                        <strong>{folder.title}</strong>
+                        <small>Ordner</small>
+                      </span>
+                    </button>
 
-              {visibleFiles.map((file) => (
-                <button
-                  className="browser-row"
-                  key={file.id}
-                  onClick={() =>
-                    safeOpen(file.url)
-                  }
-                >
-                  <span className="browser-icon">
-                    📄
-                  </span>
+                    <span className="browser-row-actions">
+                      <button
+                        className={
+                          'favorite-toggle' +
+                          (isFav
+                            ? ' favorite-toggle-active'
+                            : '')
+                        }
+                        aria-label="Favorit umschalten"
+                        onClick={() =>
+                          handleToggleFavorite({
+                            id: folder.id,
+                            entityType: 'folder',
+                            courseId: folder.courseId,
+                            title: folder.title,
+                            url: folder.url,
+                          })
+                        }
+                      >
+                        {isFav ? '★' : '☆'}
+                      </button>
 
-                  <span className="browser-body">
-                    <strong>{file.title}</strong>
+                      <span className="chevron">›</span>
+                    </span>
+                  </div>
+                );
+              })}
 
-                    <small>
-                      {file.mimeType ??
-                        'Datei'}
+              {visibleFiles.map((file) => {
+                const isFav = favorites.some(
+                  (entry) => entry.id === file.id,
+                );
 
-                      {file.fileSizeBytes
-                        ? ` · ${Math.round(
-                            file.fileSizeBytes /
-                              1024,
-                          )} KB`
-                        : ''}
-                    </small>
-                  </span>
+                const fileTags =
+                  tagsByEntity.get(file.id) ?? [];
 
-                  <span className="chevron">
-                    ↗
-                  </span>
-                </button>
-              ))}
+                return (
+                  <div
+                    className="browser-row"
+                    key={file.id}
+                  >
+                    <div className="browser-row-content">
+                      <button
+                        className="browser-row-main"
+                        onClick={() =>
+                          openAndTrack({
+                            id: file.id,
+                            entityType: 'file',
+                            courseId: file.courseId,
+                            title: file.title,
+                            url: file.url,
+                          })
+                        }
+                      >
+                        <span className="browser-icon">
+                          📄
+                        </span>
+
+                        <span className="browser-body">
+                          <strong>{file.title}</strong>
+
+                          <small>
+                            {file.mimeType ??
+                              'Datei'}
+
+                            {file.fileSizeBytes
+                              ? ` · ${Math.round(
+                                  file.fileSizeBytes /
+                                    1024,
+                                )} KB`
+                              : ''}
+                          </small>
+                        </span>
+                      </button>
+
+                      {fileTags.length > 0 && (
+                        <span className="tag-list">
+                          {fileTags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="tag-chip"
+                            >
+                              {tag}
+                              <button
+                                onClick={() =>
+                                  handleRemoveTag(
+                                    file.id,
+                                    tag,
+                                  )
+                                }
+                                aria-label={`Tag ${tag} entfernen`}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </span>
+                      )}
+
+                      <span className="tag-add">
+                        <input
+                          placeholder="+ Tag"
+                          value={
+                            tagDrafts[file.id] ?? ''
+                          }
+                          onChange={(event) =>
+                            setTagDrafts((drafts) => ({
+                              ...drafts,
+                              [file.id]:
+                                event.target.value,
+                            }))
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              handleAddTag(file.id);
+                            }
+                          }}
+                        />
+                      </span>
+                    </div>
+
+                    <span className="browser-row-actions">
+                      <button
+                        className={
+                          'favorite-toggle' +
+                          (isFav
+                            ? ' favorite-toggle-active'
+                            : '')
+                        }
+                        aria-label="Favorit umschalten"
+                        onClick={() =>
+                          handleToggleFavorite({
+                            id: file.id,
+                            entityType: 'file',
+                            courseId: file.courseId,
+                            title: file.title,
+                            url: file.url,
+                          })
+                        }
+                      >
+                        {isFav ? '★' : '☆'}
+                      </button>
+
+                      <span className="chevron">↗</span>
+                    </span>
+                  </div>
+                );
+              })}
 
               {visibleFolders.length === 0 &&
                 visibleFiles.length === 0 && (
@@ -1794,6 +2070,85 @@ function showCalendar(): void {
     />
   </section>
 )}
+
+{view === 'favorites' && (
+  <section className="assignments-page">
+    <div className="content-browser">
+      {favorites.map((favorite) => {
+        const course = courses.find(
+          (entry) => entry.id === favorite.courseId,
+        );
+
+        return (
+          <div
+            className="browser-row"
+            key={favorite.id}
+          >
+            <button
+              className="browser-row-main"
+              onClick={() =>
+                openAndTrack({
+                  id: favorite.id,
+                  entityType: favorite.entityType,
+                  courseId: favorite.courseId,
+                  title: favorite.title,
+                  url: favorite.url,
+                })
+              }
+            >
+              <span className="browser-icon">
+                {favorite.entityType === 'file'
+                  ? '📄'
+                  : favorite.entityType === 'folder'
+                    ? '📁'
+                    : '⏳'}
+              </span>
+
+              <span className="browser-body">
+                <strong>{favorite.title}</strong>
+                <small>
+                  {course?.shortName ??
+                    favorite.courseId}
+                </small>
+              </span>
+            </button>
+
+            <span className="browser-row-actions">
+              <button
+                className="favorite-toggle favorite-toggle-active"
+                aria-label="Favorit entfernen"
+                onClick={() =>
+                  handleToggleFavorite({
+                    id: favorite.id,
+                    entityType: favorite.entityType,
+                    courseId: favorite.courseId,
+                    title: favorite.title,
+                    url: favorite.url,
+                  })
+                }
+              >
+                ★
+              </button>
+
+              <span className="chevron">↗</span>
+            </span>
+          </div>
+        );
+      })}
+
+      {favorites.length === 0 && (
+        <div className="empty-panel">
+          <strong>Noch keine Favoriten.</strong>
+
+          <p>
+            Markiere Dateien oder Ordner in der
+            Kursansicht mit dem Stern-Symbol.
+          </p>
+        </div>
+      )}
+    </div>
+  </section>
+)}
       </main>
 
       {paletteOpen && (
@@ -1804,7 +2159,13 @@ function showCalendar(): void {
           }
           onSelect={(result: SearchResult) => {
             setPaletteOpen(false);
-            safeOpen(result.url);
+            openAndTrack({
+              id: result.id,
+              entityType: result.type,
+              courseId: result.courseId,
+              title: result.title,
+              url: result.url,
+            });
           }}
         />
       )}
