@@ -5,6 +5,7 @@ import type {
   EntityId,
   Folder,
   LearningFile,
+  SearchResult,
   Semester,
   SubmissionEvent,
   SyncSnapshot,
@@ -39,6 +40,11 @@ import {
 import {
   loadSubmissionEvents,
 } from './submissionEventStore';
+
+import {
+  rebuildSearchIndex,
+  searchAll,
+} from './searchStore';
 
 const LDS_COURSE_ID = 'course:lds';
 
@@ -96,13 +102,13 @@ export class SQLiteUniHubRepository
   Promise<void> {
     const existingFiles = await countFiles();
 
-    if (existingFiles > 0) {
-      return;
+    if (existingFiles === 0) {
+      await saveFiles(
+        getParsedTutoriumsFiles(),
+      );
     }
 
-    await saveFiles(
-      getParsedTutoriumsFiles(),
-    );
+    await rebuildSearchIndex();
   }
 
   async getActiveSemester():
@@ -145,6 +151,14 @@ export class SQLiteUniHubRepository
     assignmentId: EntityId,
   ): Promise<SubmissionEvent[]> {
     return loadSubmissionEvents(assignmentId);
+  }
+
+  async search(
+    query: string,
+  ): Promise<SearchResult[]> {
+    await this.initialize();
+
+    return searchAll(query);
   }
 
   async getActivity():

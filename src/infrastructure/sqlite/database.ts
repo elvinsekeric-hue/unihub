@@ -235,6 +235,54 @@ await database.execute(`
     CREATE INDEX IF NOT EXISTS idx_sync_snapshots_source
     ON sync_snapshots(course_id, scan_source_id)
   `);
+
+  /*
+   * Volltextindex für die globale Suche (Command Palette). Wird
+   * per rebuildSearchIndex() aus den übrigen Tabellen befüllt,
+   * nicht per Trigger – ein einzelnes INSERT…SELECT nach jedem
+   * Sync ist einfacher als Trigger auf drei Quelltabellen.
+   */
+  await database.execute(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS search_index
+    USING fts5(
+      entity_type UNINDEXED,
+      entity_id UNINDEXED,
+      course_id UNINDEXED,
+      title,
+      body,
+      url UNINDEXED
+    )
+  `);
+
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS recently_opened (
+      id TEXT PRIMARY KEY NOT NULL,
+      entity_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      url TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      opened_at TEXT NOT NULL
+    )
+  `);
+
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS favorites (
+      id TEXT PRIMARY KEY NOT NULL,
+      entity_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      url TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS tags (
+      entity_id TEXT NOT NULL,
+      tag TEXT NOT NULL,
+      PRIMARY KEY (entity_id, tag)
+    )
+  `);
 }
 
 export async function getDatabase(): Promise<Database> {

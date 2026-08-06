@@ -11,6 +11,9 @@ import {
 import {
   saveSubmissionEvents,
 } from '../infrastructure/sqlite/submissionEventStore';
+import {
+  rebuildSearchIndex,
+} from '../infrastructure/sqlite/searchStore';
 import { invoke } from '@tauri-apps/api/core';
 import { compareIliasFiles } from './compareIliasFiles';
 import {
@@ -426,7 +429,8 @@ await saveSubmissionEvents(
   removedFolders,
 };
 
-    
+    await rebuildSearchIndex();
+
 
     await completeScan(true);
 

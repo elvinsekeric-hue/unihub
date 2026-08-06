@@ -5,6 +5,7 @@ import type {
   EntityId,
   Folder,
   LearningFile,
+  SearchResult,
   Semester,
   SubmissionEvent,
   SyncSnapshot,
@@ -23,6 +24,7 @@ export interface UniHubRepository {
   getSubmissionEvents(
     assignmentId: EntityId,
   ): Promise<SubmissionEvent[]>;
+  search(query: string): Promise<SearchResult[]>;
   getActivity(): Promise<ActivityItem[]>;
   saveSyncSnapshot(snapshot: SyncSnapshot): Promise<void>;
 }

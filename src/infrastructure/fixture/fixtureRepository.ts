@@ -5,6 +5,7 @@ import type {
   EntityId,
   Folder,
   LearningFile,
+  SearchResult,
   Semester,
   SubmissionEvent,
   SyncSnapshot,
@@ -13,6 +14,7 @@ import type { UniHubRepository } from '../../domain/repositories';
 import tutoriumsHtml from '../ilias/__fixtures__/tutoriumsblätter.html?raw';
 import { parseIliasPage } from '../ilias/parser';
 import { mockRepository } from '../mock/mockRepository';
+import { searchInMemory } from '../../shared/search';
 
 const LDS_COURSE_ID = 'course:lds';
 
@@ -99,6 +101,33 @@ export class FixtureUniHubRepository implements UniHubRepository {
   ): Promise<SubmissionEvent[]> {
     return mockRepository.getSubmissionEvents(
       assignmentId,
+    );
+  }
+
+  async search(
+    query: string,
+  ): Promise<SearchResult[]> {
+    const [folders, assignments] = await Promise.all([
+      mockRepository.getFolders(),
+      mockRepository.getAssignments(),
+    ]);
+
+    return searchInMemory(
+      [
+        ...this.tutoriumsFiles.map((file) => ({
+          ...file,
+          type: 'file' as const,
+        })),
+        ...folders.map((folder) => ({
+          ...folder,
+          type: 'folder' as const,
+        })),
+        ...assignments.map((assignment) => ({
+          ...assignment,
+          type: 'assignment' as const,
+        })),
+      ],
+      query,
     );
   }
 

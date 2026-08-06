@@ -5,11 +5,13 @@ import type {
   EntityId,
   Folder,
   LearningFile,
+  SearchResult,
   Semester,
   SubmissionEvent,
   SyncSnapshot,
 } from '../../domain/models';
 import type { UniHubRepository } from '../../domain/repositories';
+import { searchInMemory } from '../../shared/search';
 
 const semester: Semester = {
   id: 'semester:ss26',
@@ -168,6 +170,28 @@ export class MockUniHubRepository implements UniHubRepository {
   ): Promise<SubmissionEvent[]> {
     // Mock-Daten enthalten keine Abgabehistorie.
     return [];
+  }
+
+  async search(
+    query: string,
+  ): Promise<SearchResult[]> {
+    return searchInMemory(
+      [
+        ...files.map((file) => ({
+          ...file,
+          type: 'file' as const,
+        })),
+        ...folders.map((folder) => ({
+          ...folder,
+          type: 'folder' as const,
+        })),
+        ...assignments.map((assignment) => ({
+          ...assignment,
+          type: 'assignment' as const,
+        })),
+      ],
+      query,
+    );
   }
 
   async getActivity(): Promise<ActivityItem[]> {

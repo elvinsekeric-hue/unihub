@@ -126,6 +126,20 @@ export interface SubmissionEvent {
   totalPoints?: number;
 }
 
+export type SearchResultType =
+  | 'file'
+  | 'folder'
+  | 'assignment';
+
+export interface SearchResult {
+  type: SearchResultType;
+  id: EntityId;
+  courseId: EntityId;
+  title: string;
+  url: string;
+  snippet?: string;
+}
+
 export interface Announcement {
   id: EntityId;
   courseId: EntityId;

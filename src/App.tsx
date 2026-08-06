@@ -47,6 +47,7 @@ import type {
   Assignment,
   Course,
   Folder,
+  SearchResult,
   SubmissionEvent,
 } from './domain/models';
 import type {
@@ -59,6 +60,7 @@ import { formatPointsValue } from './shared/points';
 import { AssignmentCard } from './components/AssignmentCard';
 import { CalendarView } from './components/CalendarView';
 import { Sparkline } from './components/Sparkline';
+import { CommandPalette } from './components/CommandPalette';
 import './App.css';
 
 type AppView =
@@ -176,6 +178,9 @@ const [
     targetPercentByCourse,
     setTargetPercentByCourse,
   ] = useState<Record<string, number>>({});
+
+  const [paletteOpen, setPaletteOpen] =
+    useState(false);
 
   const [syncing, setSyncing] = useState(false);
   const [
@@ -304,6 +309,31 @@ const [
         error,
       );
     });
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(
+      event: KeyboardEvent,
+    ): void {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLocaleLowerCase('en-US') === 'k'
+      ) {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    }
+
+    window.addEventListener(
+      'keydown',
+      handleKeyDown,
+    );
+
+    return () =>
+      window.removeEventListener(
+        'keydown',
+        handleKeyDown,
+      );
   }, []);
 
   useEffect(() => {
@@ -895,6 +925,14 @@ function showCalendar(): void {
                 }
               />
             </label>
+
+            <button
+              className="secondary-button"
+              onClick={() => setPaletteOpen(true)}
+              title="Globale Suche (Strg/Cmd+K)"
+            >
+              ⌘K Suche
+            </button>
 
             {(view === 'assignments' ||
               view === 'week' ||
@@ -1757,6 +1795,19 @@ function showCalendar(): void {
   </section>
 )}
       </main>
+
+      {paletteOpen && (
+        <CommandPalette
+          onClose={() => setPaletteOpen(false)}
+          onSearch={(searchQuery) =>
+            appRepository.search(searchQuery)
+          }
+          onSelect={(result: SearchResult) => {
+            setPaletteOpen(false);
+            safeOpen(result.url);
+          }}
+        />
+      )}
     </div>
   );
 }
