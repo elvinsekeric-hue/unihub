@@ -32,6 +32,24 @@ h1 { margin: 0; font-size: 30px; letter-spacing: -0.6px; }
 .primary { border: 0; border-radius: 11px; padding: 11px 15px; background: #315a82; color: white; font-weight: 700; }
 .primary:disabled { opacity: .65; }
 .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; margin-bottom: 24px; }
+.weekly-summary-banner {
+  margin: -12px 0 20px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #eef4f8;
+  color: #315a82;
+  font-size: 13px;
+  font-weight: 600;
+}
+.nav-badge {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #ad3d35;
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+}
 .metrics article { background: white; border: 1px solid #dfe5ea; border-radius: 14px; padding: 18px; }
 .metrics span, .metrics small, .metrics strong { display: block; }
 .metrics span { color: #657382; font-size: 13px; }

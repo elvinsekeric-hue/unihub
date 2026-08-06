@@ -42,6 +42,10 @@ import {
   buildPointsTrend,
 } from './application/pointsTrend';
 import {
+  buildWeeklySummaryCounts,
+  formatWeeklySummary,
+} from './application/weeklySummary';
+import {
   addEntityTag,
   getAllTags,
   getFavorites,
@@ -177,6 +181,9 @@ const [
 ] = useState<string | undefined>();
 
   const [query, setQuery] = useState('');
+
+  const [activityTypeFilter, setActivityTypeFilter] =
+    useState<'all' | ActivityItem['type']>('all');
 
   const [
     noteDrafts,
@@ -583,13 +590,39 @@ useEffect(() => {
           selectedCourse,
           query,
         ),
+      ).filter(
+        (item) =>
+          activityTypeFilter === 'all' ||
+          item.type === activityTypeFilter,
       ),
     [
       dashboard,
       query,
       selectedCourse,
+      activityTypeFilter,
     ],
   );
+
+  const weeklySummaryText = useMemo(
+    () =>
+      formatWeeklySummary(
+        buildWeeklySummaryCounts(
+          dashboard?.activity ?? [],
+          dashboard?.assignments ?? [],
+        ),
+      ),
+    [dashboard],
+  );
+
+  const unreadCount = useMemo(() => {
+    const openedIds = new Set(
+      recentlyOpened.map((entry) => entry.id),
+    );
+
+    return (dashboard?.activity ?? []).filter(
+      (item) => item.isNew && !openedIds.has(item.id),
+    ).length;
+  }, [dashboard, recentlyOpened]);
 
   const weeklyAssignments = useMemo(
     () =>
@@ -897,6 +930,11 @@ function showFavorites(): void {
             onClick={showDashboard}
           >
             ⌂ <span>Übersicht</span>
+            {unreadCount > 0 && (
+              <span className="nav-badge">
+                {unreadCount}
+              </span>
+            )}
           </button>
 
 <button
@@ -1125,6 +1163,10 @@ function showFavorites(): void {
               </article>
             </section>
 
+            <p className="weekly-summary-banner">
+              {weeklySummaryText}
+            </p>
+
             <section className="workspace">
               <div className="main-column">
                 <div className="section-heading">
@@ -1135,6 +1177,31 @@ function showFavorites(): void {
                       Abgaben aus allen Kursen.
                     </p>
                   </div>
+
+                  <select
+                    value={activityTypeFilter}
+                    onChange={(event) =>
+                      setActivityTypeFilter(
+                        event.target.value as
+                          | 'all'
+                          | ActivityItem['type'],
+                      )
+                    }
+                    aria-label="Typ filtern"
+                  >
+                    <option value="all">
+                      Alle Typen
+                    </option>
+                    <option value="file">
+                      Dateien
+                    </option>
+                    <option value="assignment">
+                      Aufgaben
+                    </option>
+                    <option value="announcement">
+                      Ankündigungen
+                    </option>
+                  </select>
 
                   <select
                     value={selectedCourse}
