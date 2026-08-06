@@ -35,6 +35,12 @@ import {
 import {
   detectRecurringWeekday,
 } from './application/recurringPattern';
+import {
+  calculatePointsNeeded,
+} from './application/gradeCalculator';
+import {
+  buildPointsTrend,
+} from './application/pointsTrend';
 
 import type {
   ActivityItem,
@@ -52,6 +58,7 @@ import { relativeDate } from './shared/dates';
 import { formatPointsValue } from './shared/points';
 import { AssignmentCard } from './components/AssignmentCard';
 import { CalendarView } from './components/CalendarView';
+import { Sparkline } from './components/Sparkline';
 import './App.css';
 
 type AppView =
@@ -156,6 +163,19 @@ const [
     expandedHistoryIds,
     setExpandedHistoryIds,
   ] = useState<Set<string>>(new Set());
+
+  const [passThreshold, setPassThreshold] =
+    useState(50);
+
+  const [
+    calculatorOpenFor,
+    setCalculatorOpenFor,
+  ] = useState<string | undefined>();
+
+  const [
+    targetPercentByCourse,
+    setTargetPercentByCourse,
+  ] = useState<Record<string, number>>({});
 
   const [syncing, setSyncing] = useState(false);
   const [
@@ -1367,53 +1387,217 @@ function showCalendar(): void {
         {view === 'assignments' && (
   <section className="assignments-page">
     {pointSummaries.length > 0 && (
-      <div className="points-summary">
-        {pointSummaries.map(
-          ({ course, points }) => (
-            <article
-              className="points-card"
-              key={course.id}
-            >
-              <span
-                className="course-badge"
-                style={{
-                  background:
-                    course.color ?? '#315a82',
-                }}
+      <>
+        <div className="points-toolbar">
+          <label>
+            Bestehensgrenze
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={passThreshold}
+              onChange={(event) =>
+                setPassThreshold(
+                  Number(event.target.value) || 0,
+                )
+              }
+            />
+            %
+          </label>
+        </div>
+
+        <div className="points-summary">
+          {pointSummaries.map(({ course, points }) => {
+            const percent =
+              points.total > 0
+                ? (points.achieved / points.total) *
+                  100
+                : 0;
+
+            const belowThreshold =
+              points.total > 0 &&
+              percent < passThreshold;
+
+            const courseAssignments = (
+              dashboard.assignments
+            ).filter(
+              (assignment) =>
+                assignment.courseId === course.id,
+            );
+
+            const trend =
+              buildPointsTrend(courseAssignments);
+
+            const targetPercent =
+              targetPercentByCourse[course.id] ?? 50;
+
+            const gradeTarget =
+              calculatorOpenFor === course.id
+                ? calculatePointsNeeded(
+                    courseAssignments,
+                    targetPercent,
+                  )
+                : undefined;
+
+            return (
+              <article
+                className={
+                  'points-card' +
+                  (belowThreshold
+                    ? ' points-card-warn'
+                    : '')
+                }
+                key={course.id}
               >
-                {course.shortName ?? '?'}
-              </span>
+                <div className="points-card-row">
+                  <span
+                    className="course-badge"
+                    style={{
+                      background:
+                        course.color ?? '#315a82',
+                    }}
+                  >
+                    {course.shortName ?? '?'}
+                  </span>
 
-              <span className="points-body">
-                <strong>Punkte</strong>
-                <em>
-                  {formatPointsValue(
-                    points.achieved,
-                  )}{' '}
-                  /{' '}
-                  {formatPointsValue(
-                    points.total,
+                  <span className="points-body">
+                    <strong>Punkte</strong>
+                    <em>
+                      {formatPointsValue(
+                        points.achieved,
+                      )}{' '}
+                      /{' '}
+                      {formatPointsValue(
+                        points.total,
+                      )}{' '}
+                      <small>
+                        ({percent.toFixed(0)} %)
+                      </small>
+                    </em>
+
+                    {belowThreshold && (
+                      <small className="pattern-hint warn">
+                        ⚠ Unter Bestehensgrenze
+                      </small>
+                    )}
+
+                    {recurringPatternByCourse.get(
+                      course.id,
+                    ) && (
+                      <small className="pattern-hint">
+                        Üblicherweise{' '}
+                        {
+                          recurringPatternByCourse.get(
+                            course.id,
+                          )?.weekdayLabel
+                        }{' '}
+                        fällig
+                      </small>
+                    )}
+                  </span>
+
+                  {trend.length >= 2 && (
+                    <Sparkline
+                      values={trend}
+                      color={
+                        course.color ?? '#315a82'
+                      }
+                    />
                   )}
-                </em>
+                </div>
 
-                {recurringPatternByCourse.get(
-                  course.id,
-                ) && (
-                  <small className="pattern-hint">
-                    Üblicherweise{' '}
-                    {
-                      recurringPatternByCourse.get(
-                        course.id,
-                      )?.weekdayLabel
-                    }{' '}
-                    fällig
-                  </small>
+                <button
+                  className="secondary-button points-calculator-toggle"
+                  onClick={() =>
+                    setCalculatorOpenFor(
+                      calculatorOpenFor === course.id
+                        ? undefined
+                        : course.id,
+                    )
+                  }
+                >
+                  🧮 Notenrechner
+                </button>
+
+                {calculatorOpenFor === course.id && (
+                  <div className="grade-calculator">
+                    <label>
+                      Zielquote
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={targetPercent}
+                        onChange={(event) =>
+                          setTargetPercentByCourse(
+                            (current) => ({
+                              ...current,
+                              [course.id]:
+                                Number(
+                                  event.target
+                                    .value,
+                                ) || 0,
+                            }),
+                          )
+                        }
+                      />
+                      %
+                    </label>
+
+                    {gradeTarget === undefined && (
+                      <small>
+                        Noch keine Punkteinformation
+                        für diesen Kurs vorhanden.
+                      </small>
+                    )}
+
+                    {gradeTarget?.isAlreadyAchieved && (
+                      <small>
+                        ✓ Ziel bereits erreicht.
+                      </small>
+                    )}
+
+                    {gradeTarget &&
+                      !gradeTarget.isAlreadyAchieved &&
+                      gradeTarget.remainingMaxPoints ===
+                        0 && (
+                        <small className="warn">
+                          Ziel nicht mehr erreichbar –
+                          keine offenen Abgaben mehr.
+                        </small>
+                      )}
+
+                    {gradeTarget &&
+                      !gradeTarget.isAlreadyAchieved &&
+                      gradeTarget.remainingMaxPoints >
+                        0 && (
+                        <small
+                          className={
+                            gradeTarget.isAchievable
+                              ? ''
+                              : 'warn'
+                          }
+                        >
+                          Noch{' '}
+                          {gradeTarget.requiredAdditionalPoints.toFixed(
+                            1,
+                          )}{' '}
+                          Punkte nötig – Ø{' '}
+                          {gradeTarget.requiredAveragePercent?.toFixed(
+                            0,
+                          )}{' '}
+                          % in den verbleibenden{' '}
+                          {gradeTarget.remainingCount}{' '}
+                          Abgaben.
+                        </small>
+                      )}
+                  </div>
                 )}
-              </span>
-            </article>
-          ),
-        )}
-      </div>
+              </article>
+            );
+          })}
+        </div>
+      </>
     )}
 
     <div className="assignment-filters">

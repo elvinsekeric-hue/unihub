@@ -393,6 +393,27 @@ h1 { margin: 0; font-size: 30px; letter-spacing: -0.6px; }
   font-size: 12px;
 }
 
+.points-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.points-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #526779;
+}
+
+.points-toolbar input {
+  width: 56px;
+  padding: 4px 6px;
+  border: 1px solid #dfe5ea;
+  border-radius: 6px;
+}
+
 .points-summary {
   display: grid;
   gap: 12px;
@@ -400,18 +421,29 @@ h1 { margin: 0; font-size: 30px; letter-spacing: -0.6px; }
 }
 
 .points-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
+  display: grid;
+  gap: 10px;
   padding: 14px 16px;
   border: 1px solid #dfe5ea;
   border-radius: 14px;
   background: white;
 }
 
+.points-card-warn {
+  border-color: #f0b8b1;
+  background: #fdf5f4;
+}
+
+.points-card-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
 .points-body {
   display: grid;
   gap: 2px;
+  flex: 1;
 }
 
 .points-body strong {
@@ -426,9 +458,58 @@ h1 { margin: 0; font-size: 30px; letter-spacing: -0.6px; }
   font-style: normal;
 }
 
+.points-body em small {
+  font-size: 12px;
+  font-weight: 600;
+  color: #71808e;
+}
+
 .pattern-hint {
   color: #71808e;
   font-size: 11px;
+}
+
+.pattern-hint.warn {
+  color: #ad3d35;
+  font-weight: 700;
+}
+
+.points-calculator-toggle {
+  width: fit-content;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.grade-calculator {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #f4f7f9;
+}
+
+.grade-calculator label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #526779;
+}
+
+.grade-calculator input {
+  width: 64px;
+  padding: 4px 6px;
+  border: 1px solid #dfe5ea;
+  border-radius: 6px;
+}
+
+.grade-calculator small.warn {
+  color: #ad3d35;
+  font-weight: 700;
+}
+
+.sparkline {
+  flex-shrink: 0;
 }
 
 .points-badge {
