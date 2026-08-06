@@ -29,6 +29,9 @@ import {
 import {
   getAssignmentsDueThisWeek,
 } from './application/weeklyOverview';
+import {
+  downloadIcsCalendar,
+} from './application/icsExport';
 
 import type {
   ActivityItem,
@@ -45,6 +48,7 @@ import { appRepository } from './infrastructure/repository';
 import { relativeDate } from './shared/dates';
 import { formatPointsValue } from './shared/points';
 import { AssignmentCard } from './components/AssignmentCard';
+import { CalendarView } from './components/CalendarView';
 import './App.css';
 
 type AppView =
@@ -52,7 +56,8 @@ type AppView =
   | 'courses'
   | 'course'
   | 'assignments'
-  | 'week';
+  | 'week'
+  | 'calendar';
 
 const iconFor = (
   type: ActivityItem['type'],
@@ -641,6 +646,11 @@ function showWeek(): void {
   setActiveFolderId(undefined);
 }
 
+function showCalendar(): void {
+  setView('calendar');
+  setActiveFolderId(undefined);
+}
+
   function showCourses(): void {
     setView('courses');
     setActiveFolderId(undefined);
@@ -726,6 +736,17 @@ function showWeek(): void {
   📆 <span>Diese Woche</span>
 </button>
 
+<button
+  className={
+    `nav-item ${
+      view === 'calendar' ? 'active' : ''
+    }`
+  }
+  onClick={showCalendar}
+>
+  🗓 <span>Kalender</span>
+</button>
+
           <button
             className={
               `nav-item ${
@@ -776,6 +797,9 @@ function showWeek(): void {
               {view === 'week' &&
                 'Diese Woche fällig'}
 
+              {view === 'calendar' &&
+                'Kalender'}
+
               {view === 'courses' &&
                 'Meine Kurse'}
 
@@ -789,6 +813,9 @@ function showWeek(): void {
 
               {view === 'week' &&
                 'Alle offenen Abgaben mit Frist in den nächsten 7 Tagen, kursübergreifend.'}
+
+              {view === 'calendar' &&
+                'Alle Fristen im Monatsüberblick, farblich nach Kurs.'}
 
               {view === 'courses' &&
                 'Alle verbundenen ILIAS-Kurse.'}
@@ -814,6 +841,22 @@ function showWeek(): void {
                 }
               />
             </label>
+
+            {(view === 'assignments' ||
+              view === 'week' ||
+              view === 'calendar') && (
+              <button
+                className="secondary-button"
+                onClick={() =>
+                  downloadIcsCalendar(
+                    dashboard.assignments,
+                    dashboard.courses,
+                  )
+                }
+              >
+                ⤓ Als .ics exportieren
+              </button>
+            )}
 
             <button
               className="primary"
@@ -1469,6 +1512,16 @@ function showWeek(): void {
         </div>
       )}
     </div>
+  </section>
+)}
+
+{view === 'calendar' && (
+  <section className="assignments-page">
+    <CalendarView
+      assignments={assignments}
+      courses={courses}
+      onOpen={safeOpen}
+    />
   </section>
 )}
       </main>
