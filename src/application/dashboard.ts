@@ -45,3 +45,39 @@ export function filterActivity(
     return matchesCourse && matchesQuery;
   });
 }
+
+function urgencyScore(item: ActivityItem): number {
+  if (
+    item.type === 'assignment' &&
+    item.dueAt &&
+    item.status !== 'submitted' &&
+    item.status !== 'graded'
+  ) {
+    return new Date(item.dueAt).getTime();
+  }
+
+  return Number.POSITIVE_INFINITY;
+}
+
+/**
+ * Standard-Reihenfolge des Feeds: offene Abgaben mit der
+ * nächstgelegenen Frist zuerst, dann Neues vor Bekanntem.
+ */
+export function sortActivityByUrgency(
+  activity: ActivityItem[],
+): ActivityItem[] {
+  return [...activity].sort((left, right) => {
+    const leftScore = urgencyScore(left);
+    const rightScore = urgencyScore(right);
+
+    if (leftScore !== rightScore) {
+      return leftScore - rightScore;
+    }
+
+    if (left.isNew !== right.isNew) {
+      return left.isNew ? -1 : 1;
+    }
+
+    return 0;
+  });
+}

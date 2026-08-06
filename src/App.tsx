@@ -10,6 +10,7 @@ import {
 import {
   filterActivity,
   loadDashboard,
+  sortActivityByUrgency,
   type DashboardData,
 } from './application/dashboard';
 import {
@@ -25,6 +26,9 @@ import {
 import {
   buildFullSyncStartUrls,
 } from './application/courseRegistry';
+import {
+  getAssignmentsDueThisWeek,
+} from './application/weeklyOverview';
 
 import type {
   ActivityItem,
@@ -39,13 +43,16 @@ import type {
 
 import { appRepository } from './infrastructure/repository';
 import { relativeDate } from './shared/dates';
+import { formatPointsValue } from './shared/points';
+import { AssignmentCard } from './components/AssignmentCard';
 import './App.css';
 
 type AppView =
   | 'dashboard'
   | 'courses'
   | 'course'
-  | 'assignments';
+  | 'assignments'
+  | 'week';
 
 const iconFor = (
   type: ActivityItem['type'],
@@ -85,83 +92,6 @@ function sameParent(
   parentFolderId: string | undefined,
 ): boolean {
   return folder.parentFolderId === parentFolderId;
-}
-
-function getDeadlineHint(
-  assignment: Assignment,
-):
-  | { text: string; tone: 'ok' | 'warn' | 'overdue' }
-  | undefined {
-  if (
-    assignment.status === 'submitted' ||
-    assignment.status === 'graded' ||
-    !assignment.dueAt
-  ) {
-    return undefined;
-  }
-
-  const diffDays =
-    (new Date(assignment.dueAt).getTime() -
-      Date.now()) /
-    86_400_000;
-
-  if (diffDays < 0) {
-    return {
-      text: '⏰ Frist abgelaufen',
-      tone: 'overdue',
-    };
-  }
-
-  if (diffDays <= 7) {
-    return {
-      text: `⏰ Noch ${Math.ceil(diffDays)} ${
-        Math.ceil(diffDays) === 1 ? 'Tag' : 'Tage'
-      } bis zur Frist`,
-      tone: 'warn',
-    };
-  }
-
-  return {
-    text: `📅 Frist in ${Math.ceil(diffDays)} Tagen`,
-    tone: 'ok',
-  };
-}
-
-function formatPointsValue(
-  value: number,
-): string {
-  return Number.isInteger(value)
-    ? String(value)
-    : value.toLocaleString('de-DE', {
-        maximumFractionDigits: 1,
-      });
-}
-
-function formatSubmissionEvent(
-  event: SubmissionEvent,
-): string {
-  const date = new Date(
-    event.occurredAt,
-  ).toLocaleString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-  if (event.kind === 'graded') {
-    return (
-      `${date} · Bewertet: ` +
-      `${formatPointsValue(
-        event.achievedPoints ?? 0,
-      )} / ${formatPointsValue(
-        event.totalPoints ?? 0,
-      )} Punkte`
-    );
-  }
-
-  return `${date} · Abgabe eingereicht`;
 }
 
 export default function App() {
@@ -491,16 +421,26 @@ useEffect(() => {
 
   const visibleItems = useMemo(
     () =>
-      filterActivity(
-        dashboard?.activity ?? [],
-        selectedCourse,
-        query,
+      sortActivityByUrgency(
+        filterActivity(
+          dashboard?.activity ?? [],
+          selectedCourse,
+          query,
+        ),
       ),
     [
       dashboard,
       query,
       selectedCourse,
     ],
+  );
+
+  const weeklyAssignments = useMemo(
+    () =>
+      getAssignmentsDueThisWeek(
+        dashboard?.assignments ?? [],
+      ),
+    [dashboard],
   );
 
   const normalizedCourseQuery = query
@@ -696,6 +636,11 @@ function showAssignments(): void {
   setActiveFolderId(undefined);
 }
 
+function showWeek(): void {
+  setView('week');
+  setActiveFolderId(undefined);
+}
+
   function showCourses(): void {
     setView('courses');
     setActiveFolderId(undefined);
@@ -770,6 +715,17 @@ function showAssignments(): void {
   ✓ <span>Aufgaben</span>
 </button>
 
+<button
+  className={
+    `nav-item ${
+      view === 'week' ? 'active' : ''
+    }`
+  }
+  onClick={showWeek}
+>
+  📆 <span>Diese Woche</span>
+</button>
+
           <button
             className={
               `nav-item ${
@@ -817,6 +773,9 @@ function showAssignments(): void {
               {view === 'dashboard' &&
                 'Guten Tag, Elvin.'}
 
+              {view === 'week' &&
+                'Diese Woche fällig'}
+
               {view === 'courses' &&
                 'Meine Kurse'}
 
@@ -827,6 +786,9 @@ function showAssignments(): void {
             <p className="subtitle">
               {view === 'dashboard' &&
                 'Hier ist alles, was gerade wichtig ist.'}
+
+              {view === 'week' &&
+                'Alle offenen Abgaben mit Frist in den nächsten 7 Tagen, kursübergreifend.'}
 
               {view === 'courses' &&
                 'Alle verbundenen ILIAS-Kurse.'}
@@ -1415,271 +1377,34 @@ function showAssignments(): void {
     </div>
 
     <div className="assignment-list">
-      {visibleAssignments.map(
-        (assignment) => {
-          const course = courses.find(
+      {visibleAssignments.map((assignment) => (
+        <AssignmentCard
+          key={assignment.id}
+          assignment={assignment}
+          course={courses.find(
             (entry) =>
-              entry.id ===
-              assignment.courseId,
-          );
-
-          const deadlineHint =
-            getDeadlineHint(assignment);
-
-          return (
-  <article
-    className="assignment-row"
-    key={assignment.id}
-  >
-    <span
-      className="course-badge"
-      style={{
-        background:
-          course?.color ??
-          '#315a82',
-      }}
-    >
-      {course?.shortName ?? '?'}
-    </span>
-
-    <span className="assignment-body">
-      <button
-        className="assignment-main-link"
-        onClick={() =>
-          safeOpen(assignment.url)
-        }
-      >
-        <span className="assignment-title">
-          <strong>
-            {assignment.title}
-          </strong>
-
-          {assignment.isNew && (
-            <em>NEU</em>
+              entry.id === assignment.courseId,
           )}
-        </span>
-      </button>
-
-      {assignment.description && (
-        <small>
-          {assignment.description}
-        </small>
-      )}
-
-      <span className="assignment-meta">
-        <span>
-          Status:{' '}
-          {assignment.status ===
-            'not-started' &&
-            'Nicht begonnen'}
-          {assignment.status ===
-            'in-progress' &&
-            'In Bearbeitung'}
-          {assignment.status ===
-            'submitted' &&
-            'Abgegeben'}
-          {assignment.status ===
-            'graded' &&
-            'Bewertet'}
-        </span>
-
-        {assignment.totalPoints !==
-          undefined && (
-          <span className="points-badge">
-            Punkte:{' '}
-            {assignment.achievedPoints !==
-            undefined
-              ? formatPointsValue(
-                  assignment.achievedPoints,
-                )
-              : '0'}{' '}
-            /{' '}
-            {formatPointsValue(
-              assignment.totalPoints,
-            )}
-          </span>
-        )}
-
-        {assignment.submittedAt && (
-          <span>
-            Letzte Abgabe:{' '}
-            {new Date(
-              assignment.submittedAt,
-            ).toLocaleString(
-              'de-DE',
-              {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              },
-            )}
-          </span>
-        )}
-
-        {assignment.dueAt && (
-          <span className="urgent">
-            Fällig{' '}
-            {relativeDate(
-              assignment.dueAt,
-            )}
-          </span>
-        )}
-      </span>
-
-      <div className="assignment-hint">
-        <strong>Abgabe-Hinweis</strong>
-
-        {deadlineHint && (
-          <span
-            className={`deadline-hint ${deadlineHint.tone}`}
-          >
-            {deadlineHint.text}
-          </span>
-        )}
-
-        {assignment.submissionHint && (
-          <blockquote className="ilias-hint">
-            {assignment.submissionHint}
-          </blockquote>
-        )}
-
-        <textarea
-          className="note-input"
-          placeholder="Eigene Notiz …"
-          value={
-            noteDrafts[assignment.id] ??
-            assignment.userNote ??
-            ''
-          }
-          onChange={(event) =>
+          noteDraft={noteDrafts[assignment.id]}
+          onNoteChange={(value) =>
             setNoteDrafts((drafts) => ({
               ...drafts,
-              [assignment.id]:
-                event.target.value,
+              [assignment.id]: value,
             }))
           }
-        />
-
-        <button
-          className="note-save"
-          onClick={() =>
-            saveNote(assignment)
-          }
-        >
-          Notiz speichern
-        </button>
-      </div>
-
-      {(assignment.submissionFiles
-        ?.length ?? 0) > 0 && (
-        <div className="submission-section">
-          <strong>
-            Meine Abgabe
-          </strong>
-
-          {assignment.submissionFiles?.map(
-            (file) => (
-              <button
-                key={file.id}
-                className="submission-file"
-                onClick={() =>
-                  safeOpen(file.url)
-                }
-              >
-                📄 {file.title}
-                <span>↗</span>
-              </button>
-            ),
-          )}
-        </div>
-      )}
-
-      {(assignment.feedbackFiles
-        ?.length ?? 0) > 0 && (
-        <div className="submission-section">
-          <strong>
-            Bewertung
-          </strong>
-
-          {assignment.feedbackFiles?.map(
-            (file) => (
-              <button
-                key={file.id}
-                className="submission-file"
-                onClick={() =>
-                  safeOpen(file.url)
-                }
-              >
-                📝 {file.title}
-                <span>Download ↗</span>
-              </button>
-            ),
-          )}
-        </div>
-      )}
-
-      <div className="submission-section">
-        <button
-          className="secondary-button"
-          onClick={() =>
-            toggleSubmissionHistory(
-              assignment.id,
-            )
-          }
-        >
-          {expandedHistoryIds.has(
+          onSaveNote={() => saveNote(assignment)}
+          isHistoryExpanded={expandedHistoryIds.has(
             assignment.id,
-          )
-            ? 'Verlauf ausblenden'
-            : 'Verlauf anzeigen'}
-        </button>
-
-        {expandedHistoryIds.has(
-          assignment.id,
-        ) && (
-          <ul className="submission-history">
-            {(
-              submissionHistory[
-                assignment.id
-              ] ?? []
-            ).map((event, index) => (
-              <li
-                key={`${assignment.id}-${index}`}
-              >
-                {formatSubmissionEvent(
-                  event,
-                )}
-              </li>
-            ))}
-
-            {submissionHistory[
-              assignment.id
-            ]?.length === 0 && (
-              <li>
-                Noch kein Verlauf
-                aufgezeichnet.
-              </li>
-            )}
-          </ul>
-        )}
-      </div>
-    </span>
-
-    <button
-      className="assignment-open"
-      onClick={() =>
-        safeOpen(assignment.url)
-      }
-      aria-label="Abgabe in ILIAS öffnen"
-    >
-      ↗
-    </button>
-  </article>
-);
-        },
-      )}
+          )}
+          historyEvents={
+            submissionHistory[assignment.id]
+          }
+          onToggleHistory={() =>
+            toggleSubmissionHistory(assignment.id)
+          }
+          onOpen={safeOpen}
+        />
+      ))}
 
       {visibleAssignments.length === 0 && (
         <div className="empty-panel">
@@ -1692,6 +1417,54 @@ function showAssignments(): void {
             Kursscan, damit UniHub die
             Übungs- und Abgabeseiten
             einliest.
+          </p>
+        </div>
+      )}
+    </div>
+  </section>
+)}
+
+{view === 'week' && (
+  <section className="assignments-page">
+    <div className="assignment-list">
+      {weeklyAssignments.map((assignment) => (
+        <AssignmentCard
+          key={assignment.id}
+          assignment={assignment}
+          course={courses.find(
+            (entry) =>
+              entry.id === assignment.courseId,
+          )}
+          noteDraft={noteDrafts[assignment.id]}
+          onNoteChange={(value) =>
+            setNoteDrafts((drafts) => ({
+              ...drafts,
+              [assignment.id]: value,
+            }))
+          }
+          onSaveNote={() => saveNote(assignment)}
+          isHistoryExpanded={expandedHistoryIds.has(
+            assignment.id,
+          )}
+          historyEvents={
+            submissionHistory[assignment.id]
+          }
+          onToggleHistory={() =>
+            toggleSubmissionHistory(assignment.id)
+          }
+          onOpen={safeOpen}
+        />
+      ))}
+
+      {weeklyAssignments.length === 0 && (
+        <div className="empty-panel">
+          <strong>
+            Diese Woche liegt nichts an.
+          </strong>
+
+          <p>
+            Keine offenen Abgaben mit Frist in
+            den nächsten 7 Tagen.
           </p>
         </div>
       )}
