@@ -426,6 +426,11 @@ h1 { margin: 0; font-size: 30px; letter-spacing: -0.6px; }
   font-style: normal;
 }
 
+.pattern-hint {
+  color: #71808e;
+  font-size: 11px;
+}
+
 .points-badge {
   color: #1c3f5c;
   font-weight: 700;

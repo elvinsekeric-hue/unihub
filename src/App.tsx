@@ -32,6 +32,9 @@ import {
 import {
   downloadIcsCalendar,
 } from './application/icsExport';
+import {
+  detectRecurringWeekday,
+} from './application/recurringPattern';
 
 import type {
   ActivityItem,
@@ -511,6 +514,37 @@ useEffect(() => {
         assignment.achievedPoints ?? 0;
 
       result.set(assignment.courseId, entry);
+    }
+
+    return result;
+  }, [dashboard]);
+
+  /*
+   * Wiederkehrendes Muster pro Kurs (z. B. „üblicherweise
+   * dienstags fällig"), aus den bisher bekannten Fristen erkannt.
+   */
+  const recurringPatternByCourse = useMemo(() => {
+    const result = new Map<
+      string,
+      ReturnType<typeof detectRecurringWeekday>
+    >();
+
+    const byCourse = new Map<string, Assignment[]>();
+
+    for (const assignment of
+      dashboard?.assignments ?? []) {
+      const entries =
+        byCourse.get(assignment.courseId) ?? [];
+
+      entries.push(assignment);
+      byCourse.set(assignment.courseId, entries);
+    }
+
+    for (const [courseId, entries] of byCourse) {
+      result.set(
+        courseId,
+        detectRecurringWeekday(entries),
+      );
     }
 
     return result;
@@ -1361,6 +1395,20 @@ function showCalendar(): void {
                     points.total,
                   )}
                 </em>
+
+                {recurringPatternByCourse.get(
+                  course.id,
+                ) && (
+                  <small className="pattern-hint">
+                    Üblicherweise{' '}
+                    {
+                      recurringPatternByCourse.get(
+                        course.id,
+                      )?.weekdayLabel
+                    }{' '}
+                    fällig
+                  </small>
+                )}
               </span>
             </article>
           ),
